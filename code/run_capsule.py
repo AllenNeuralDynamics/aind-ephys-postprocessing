@@ -135,7 +135,7 @@ tmp_folder.mkdir()
 
 
 if __name__ == "__main__":
-    data_processes_folder = results_folder / "data_processes" / "postprocessing"
+    data_processes_folder = results_folder / "data_processes_postprocessing"
     data_processes_folder.mkdir(exist_ok=True, parents=True)
     
     si.set_global_job_kwargs(**job_kwargs)
