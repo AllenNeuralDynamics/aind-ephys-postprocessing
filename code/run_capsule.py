@@ -193,7 +193,7 @@ if __name__ == "__main__":
 
         wf_sparse_folder = results_folder / "postprocessed" / recording_name
         # this is a trick to make the postprocessed folder "self-contained
-        sorting = sorting.save(folder=results_folder / "postprocessed" / f"{recording_name}_sorting")
+        sorting_deduplicated = sorting_deduplicated.save(folder=results_folder / "postprocessed" / f"{recording_name}_sorting")
 
         # now extract waveforms on de-duplicated units
         print(f"\tSaving sparse de-duplicated waveform extractor folder")
