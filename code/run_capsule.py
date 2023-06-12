@@ -141,11 +141,14 @@ if __name__ == "__main__":
     si.set_global_job_kwargs(**job_kwargs)
 
     ####### POSTPROCESSING ########
-    print("\n\POSTPROCESSING")
+    print("\nPOSTPROCESSING")
     postprocessing_notes = ""
 
     datetime_start_postprocessing = datetime.now()
     t_postprocessing_start = time.perf_counter()
+
+    data_files = [p.name for p in data_folder.iterdir()]
+    print(f"Files in DATA folder:\n{data_files}")
 
     # check if test
     if (data_folder / "preprocessing_output_test").is_dir():
