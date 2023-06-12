@@ -166,8 +166,14 @@ if __name__ == "__main__":
         print("'spikesorted' folder not found. Exiting")
         sys.exit(1)
 
+    preprocessed_files = [p.name for p in preprocessed_folder.iterdir()]
+    print(f"Files in PREPROCESSED folder:\n{preprocessed_files}")
+    spikesorted_files = [p.name for p in spikesorted_folder.iterdir()]
+    print(f"Files in SPIKESORTED folder:\n{spikesorted_files}")
+
     for recording_folder in preprocessed_folder.iterdir():
         recording_name = recording_folder.name
+        print(f"\tProcessing {recording_folder}")
         sorted_folder = spikesorted_folder / recording_name
         assert sorted_folder.is_dir()
         postprocessing_output_process_json = data_processes_folder / f"postprocessing_{recording_name}.json"
