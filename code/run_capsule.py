@@ -174,13 +174,12 @@ if __name__ == "__main__":
     for recording_folder in preprocessed_folder.iterdir():
         recording_name = recording_folder.name
         print(f"\tProcessing {recording_folder}")
-        sorted_folder = spikesorted_folder / recording_name
-        assert sorted_folder.is_dir()
         postprocessing_output_process_json = data_processes_folder / f"postprocessing_{recording_name}.json"
 
         recording = si.load_extractor(recording_folder)
         # make sure we have spikesorted output for the block-stream
         recording_sorted_folder = spikesorted_folder / recording_name
+        print("Sorted folders", recording_sorted_folder, recording_sorted_folder.is_dir())
         assert recording_sorted_folder.is_dir(), f"Could not find spikesorted output for {recording_name}"
         sorting = si.load_extractor(recording_sorted_folder.absolute().resolve())
 
