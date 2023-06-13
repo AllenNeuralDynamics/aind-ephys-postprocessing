@@ -144,8 +144,7 @@ if __name__ == "__main__":
     print("\nPOSTPROCESSING")
     postprocessing_notes = ""
 
-    datetime_start_postprocessing = datetime.now()
-    t_postprocessing_start = time.perf_counter()
+    t_postprocessing_start_all = time.perf_counter()
 
     data_files = [p.name for p in data_folder.iterdir()]
     print(f"Files in DATA folder:\n{data_files}")
@@ -172,6 +171,8 @@ if __name__ == "__main__":
     print(f"Files in SPIKESORTED folder:\n{spikesorted_files}")
 
     for recording_folder in preprocessed_folder.iterdir():
+        datetime_start_postprocessing = datetime.now()
+        t_postprocessing_start = time.perf_counter()
         recording_name = recording_folder.name
         print(f"\tProcessing {recording_folder}")
         postprocessing_output_process_json = data_processes_folder / f"postprocessing_{recording_name}.json"
@@ -227,24 +228,26 @@ if __name__ == "__main__":
         print("\tComputing quality metrics")
         qm = sqm.compute_quality_metrics(we, **postprocessing_params["quality_metrics"])
 
-    t_postprocessing_end = time.perf_counter()
-    elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
+        t_postprocessing_end = time.perf_counter()
+        elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
 
-    # save params in output
-    postprocessing_params["recording_name"] = recording_name
-    postprocessing_process = DataProcess(
-            name="Ephys postprocessing",
-            version=VERSION, # either release or git commit
-            start_date_time=datetime_start_postprocessing,
-            end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
-            input_location=str(data_folder),
-            output_location=str(results_folder),
-            code_url=URL,
-            parameters=postprocessing_params,
-            notes=postprocessing_notes
-        )
-    with open(postprocessing_output_process_json, "w") as f:
-        f.write(postprocessing_process.json(indent=3))
+        # save params in output
+        postprocessing_params["recording_name"] = recording_name
+        postprocessing_process = DataProcess(
+                name="Ephys postprocessing",
+                version=VERSION, # either release or git commit
+                start_date_time=datetime_start_postprocessing,
+                end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
+                input_location=str(data_folder),
+                output_location=str(results_folder),
+                code_url=URL,
+                parameters=postprocessing_params,
+                notes=postprocessing_notes
+            )
+        with open(postprocessing_output_process_json, "w") as f:
+            f.write(postprocessing_process.json(indent=3))
 
-    print(f"POSTPROCESSING time: {elapsed_time_postprocessing}s")
+    t_postprocessing_end_all = time.perf_counter()
+    elapsed_time_postprocessing_all = np.round(t_postprocessing_end_all - t_postprocessing_start_all, 2)
+    print(f"POSTPROCESSING time: {elapsed_time_postprocessing_all}s")
 
