@@ -163,7 +163,7 @@ if __name__ == "__main__":
         print("'spikesorted' folder not found. Exiting")
         sys.exit(1)
 
-    preprocessed_recording_folders = [p.name for p in preprocessed_folder.iterdir() if p.is_dir()]
+    preprocessed_recording_folders = [p for p in preprocessed_folder.iterdir() if p.is_dir()]
 
     for recording_folder in preprocessed_recording_folders:
         datetime_start_postprocessing = datetime.now()
