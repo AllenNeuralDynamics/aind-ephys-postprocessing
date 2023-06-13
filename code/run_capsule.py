@@ -142,8 +142,6 @@ if __name__ == "__main__":
 
     ####### POSTPROCESSING ########
     print("\nPOSTPROCESSING")
-    postprocessing_notes = ""
-
     t_postprocessing_start_all = time.perf_counter()
 
     data_files = [p.name for p in data_folder.iterdir()]
@@ -165,14 +163,13 @@ if __name__ == "__main__":
         print("'spikesorted' folder not found. Exiting")
         sys.exit(1)
 
-    preprocessed_files = [p.name for p in preprocessed_folder.iterdir()]
-    print(f"Files in PREPROCESSED folder:\n{preprocessed_files}")
-    spikesorted_files = [p.name for p in spikesorted_folder.iterdir()]
-    print(f"Files in SPIKESORTED folder:\n{spikesorted_files}")
+    preprocessed_recording_folders = [p.name for p in preprocessed_folder.iterdir() if p.is_dir()]
 
-    for recording_folder in preprocessed_folder.iterdir():
+    for recording_folder in preprocessed_recording_folders:
         datetime_start_postprocessing = datetime.now()
         t_postprocessing_start = time.perf_counter()
+        postprocessing_notes = ""
+
         recording_name = recording_folder.name
         print(f"\tProcessing {recording_folder}")
         postprocessing_output_process_json = data_processes_folder / f"postprocessing_{recording_name}.json"
@@ -191,7 +188,8 @@ if __name__ == "__main__":
         # de-duplication
         sorting_deduplicated = sc.remove_redundant_units(we_raw, duplicate_threshold=postprocessing_params["duplicate_threshold"])
         print(f"\tNumber of original units: {len(we_raw.sorting.unit_ids)} -- Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}")
-        postprocessing_notes += f"{recording_name}:\n- Removed {len(sorting.unit_ids) - len(sorting_deduplicated.unit_ids)} duplicated units.\n"
+        n_duplicated = int(len(sorting.unit_ids) - len(sorting_deduplicated.unit_ids))
+        postprocessing_notes += f"\n- Removed {n_duplicated} duplicated units.\n"
         deduplicated_unit_ids = sorting_deduplicated.unit_ids
         # use existing deduplicated waveforms to compute sparsity
         sparsity_raw = si.compute_sparsity(we_raw, **sparsity_params)
@@ -233,6 +231,9 @@ if __name__ == "__main__":
 
         # save params in output
         postprocessing_params["recording_name"] = recording_name
+        postprocessing_outputs = dict(
+            duplicated_units=n_duplicated
+        )
         postprocessing_process = DataProcess(
                 name="Ephys postprocessing",
                 version=VERSION, # either release or git commit
@@ -242,6 +243,7 @@ if __name__ == "__main__":
                 output_location=str(results_folder),
                 code_url=URL,
                 parameters=postprocessing_params,
+                outputs=postprocessing_outputs,
                 notes=postprocessing_notes
             )
         with open(postprocessing_output_process_json, "w") as f:
