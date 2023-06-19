@@ -144,9 +144,6 @@ if __name__ == "__main__":
     print("\nPOSTPROCESSING")
     t_postprocessing_start_all = time.perf_counter()
 
-    data_files = [p.name for p in data_folder.iterdir()]
-    print(f"Files in DATA folder:\n{data_files}")
-
     # check if test
     if (data_folder / "preprocessing_output_test").is_dir():
         print("\n*******************\n**** TEST MODE ****\n*******************\n")
@@ -163,18 +160,31 @@ if __name__ == "__main__":
         print("'spikesorted' folder not found. Exiting")
         sys.exit(1)
 
-    preprocessed_recording_folders = [p for p in preprocessed_folder.iterdir() if p.is_dir()]
 
-    for recording_folder in preprocessed_recording_folders:
+    # load job json files
+    job_config_json_files = [p for p in data_folder.iterdir() if p.suffix == ".json" and "job" in p.name]
+    print(f"Found {len(job_config_json_files)} json configurations")
+
+    if len(job_config_json_files) > 0:
+        recording_names = []
+        for json_file in job_config_json_files:
+            with open(json_file, "r") as f:
+                config = json.load(f)
+            recording_name = config["recording_name"]
+            assert (preprocessed_folder / recording_name).is_dir(), f"Preprocessed folder for {recording_name} not found!"
+            recording_names.append(recording_name)
+    else:
+        recording_names = [p.name for p in preprocessed_folder.iterdir() if p.is_dir()]
+
+    for recording_name in recording_names:
         datetime_start_postprocessing = datetime.now()
         t_postprocessing_start = time.perf_counter()
         postprocessing_notes = ""
 
-        recording_name = recording_folder.name
         print(f"\tProcessing {recording_name}")
         postprocessing_output_process_json = data_processes_folder / f"postprocessing_{recording_name}.json"
 
-        recording = si.load_extractor(recording_folder)
+        recording = si.load_extractor(preprocessed_folder / recording_name)
         # make sure we have spikesorted output for the block-stream
         recording_sorted_folder = spikesorted_folder / recording_name
         if not recording_sorted_folder.is_dir():
