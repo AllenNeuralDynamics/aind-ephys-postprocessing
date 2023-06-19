@@ -171,14 +171,17 @@ if __name__ == "__main__":
         postprocessing_notes = ""
 
         recording_name = recording_folder.name
-        print(f"\tProcessing {recording_folder}")
+        print(f"\tProcessing {recording_name}")
         postprocessing_output_process_json = data_processes_folder / f"postprocessing_{recording_name}.json"
 
         recording = si.load_extractor(recording_folder)
         # make sure we have spikesorted output for the block-stream
         recording_sorted_folder = spikesorted_folder / recording_name
-        print("Sorted folders", recording_sorted_folder, recording_sorted_folder.is_dir())
-        assert recording_sorted_folder.is_dir(), f"Could not find spikesorted output for {recording_name}"
+        if not recording_sorted_folder.is_dir():
+            spikesorted_folder_data = [p.name for p in spikesorted_folder.iterdir() if p.is_dir()]
+            print(f"Could not find spikesorted output for {recording_name} in 'spikesorted' folder.\nAvailable sorted data: {spikesorted_folder_data}")
+            raise FileNotFoundError(f"Spike sorted data for {recording_name} not found!")
+
         sorting = si.load_extractor(recording_sorted_folder.absolute().resolve())
 
         # first extract some raw waveforms in memory to deduplicate based on peak alignment
