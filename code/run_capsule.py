@@ -135,8 +135,7 @@ tmp_folder.mkdir()
 
 
 if __name__ == "__main__":
-    data_processes_folder = results_folder / "data_processes_postprocessing"
-    data_processes_folder.mkdir(exist_ok=True, parents=True)
+    data_process_prefix = "data_process_postprocessing"
     
     si.set_global_job_kwargs(**job_kwargs)
 
@@ -145,21 +144,15 @@ if __name__ == "__main__":
     t_postprocessing_start_all = time.perf_counter()
 
     # check if test
-    if (data_folder / "preprocessing_output_test").is_dir():
+    if (data_folder / "preprocessing_pipeline_output_test").is_dir():
         print("\n*******************\n**** TEST MODE ****\n*******************\n")
-        preprocessed_folder = data_folder / "preprocessing_output_test" / "preprocessed"
-        spikesorted_folder = data_folder / "spikesorting_output_test" / "spikesorted"
+        preprocessed_folder = data_folder / "preprocessing_pipeline_output_test"
+        spikesorted_folder = data_folder / "spikesorting_pipeline_output_test"
     else:
-        preprocessed_folder = data_folder / "preprocessed"
-        spikesorted_folder = data_folder / "spikesorted"
+        preprocessed_folder = data_folder
+        spikesorted_folder = data_folder
 
-    if not preprocessed_folder.is_dir():
-        print("'preprocessed' folder not found. Exiting")
-        sys.exit(1)
-    if not spikesorted_folder.is_dir():
-        print("'spikesorted' folder not found. Exiting")
-        sys.exit(1)
-
+    preprocessed_folders = [p for p in preprocessed_folder.iterdir() if p.is_dir() and "preprocessed_" in p.name]
 
     # load job json files
     job_config_json_files = [p for p in data_folder.iterdir() if p.suffix == ".json" and "job" in p.name]
@@ -171,10 +164,10 @@ if __name__ == "__main__":
             with open(json_file, "r") as f:
                 config = json.load(f)
             recording_name = config["recording_name"]
-            assert (preprocessed_folder / recording_name).is_dir(), f"Preprocessed folder for {recording_name} not found!"
+            assert (preprocessed_folder / f"preprocessed_{recording_name}").is_dir(), f"Preprocessed folder for {recording_name} not found!"
             recording_names.append(recording_name)
     else:
-        recording_names = [p.name for p in preprocessed_folder.iterdir() if p.is_dir()]
+        recording_names = [("_").join(p.name.split("_")[1:]) for p in preprocessed_folders]
 
     for recording_name in recording_names:
         datetime_start_postprocessing = datetime.now()
@@ -182,17 +175,17 @@ if __name__ == "__main__":
         postprocessing_notes = ""
 
         print(f"\tProcessing {recording_name}")
-        postprocessing_output_process_json = data_processes_folder / f"postprocessing_{recording_name}.json"
+        postprocessing_output_process_json = results_folder / f"{data_process_prefix}_{recording_name}.json"
+        postprocessing_output_folder = results_folder / f"postprocessed_{recording_name}"
+        postprocessing_sorting_output_folder = results_folder / f"postprocessed-sorting_{recording_name}"
 
-        recording = si.load_extractor(preprocessed_folder / recording_name)
+        recording = si.load_extractor(preprocessed_folder / f"preprocessed_{recording_name}")
         # make sure we have spikesorted output for the block-stream
-        recording_sorted_folder = spikesorted_folder / recording_name
-        if not recording_sorted_folder.is_dir():
-            spikesorted_folder_data = [p.name for p in spikesorted_folder.iterdir() if p.is_dir()]
-            print(f"Could not find spikesorted output for {recording_name} in 'spikesorted' folder.\nAvailable sorted data: {spikesorted_folder_data}")
+        sorted_folder = spikesorted_folder / f"spikesorted_{recording_name}"
+        if not sorted_folder.is_dir():
             raise FileNotFoundError(f"Spike sorted data for {recording_name} not found!")
 
-        sorting = si.load_extractor(recording_sorted_folder.absolute().resolve())
+        sorting = si.load_extractor(sorted_folder)
 
         # first extract some raw waveforms in memory to deduplicate based on peak alignment
         wf_dedup_folder = tmp_folder / "postprocessed" / recording_name
@@ -211,14 +204,13 @@ if __name__ == "__main__":
         shutil.rmtree(wf_dedup_folder)
         del we_raw
 
-        wf_sparse_folder = results_folder / "postprocessed" / recording_name
         # this is a trick to make the postprocessed folder "self-contained
-        sorting_deduplicated = sorting_deduplicated.save(folder=results_folder / "postprocessed" / f"{recording_name}_sorting")
+        sorting_deduplicated = sorting_deduplicated.save(folder=postprocessing_sorting_output_folder)
 
         # now extract waveforms on de-duplicated units
         print(f"\tSaving sparse de-duplicated waveform extractor folder")
         we = si.extract_waveforms(recording, sorting_deduplicated, 
-                                  folder=wf_sparse_folder, sparsity=sparsity, sparse=True,
+                                  folder=postprocessing_output_folder, sparsity=sparsity, sparse=True,
                                   overwrite=True, **postprocessing_params["waveforms"])
         print("\tComputing spike amplitides")
         amps = spost.compute_spike_amplitudes(we, **postprocessing_params["spike_amplitudes"])
