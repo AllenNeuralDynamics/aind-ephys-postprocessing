@@ -35,6 +35,6 @@ A full list of parameters used for postprocessing and quality metrics calculatio
 The output of this capsule is the following:
 
 - `results/postprocessed_{recording_name}` folder, containing the postprocessed data (as a [WaveformExtractor](https://spikeinterface.readthedocs.io/en/latest/modules/core.html#waveformextractor) folder)
-- `results/postprocessed-sorting_{recording_name}` folder, containing the spike sorted data after de-duplication saved by SpikeInterface
+- `results/postprocessed-sorting_{recording_name}` folder, containing the spike sorted data, saved by SpikeInterface, after de-duplication
 - `results/data_process_postprocessing_{recording_name}.json` file, a JSON file containing a `DataProcess` object from the [aind-data-schema](https://aind-data-schema.readthedocs.io/en/stable/) package.
 
