@@ -1,5 +1,5 @@
 # Postprocessing for AIND ephys pipeline
-## aind-capsule-ephys-postprocessing
+## aind-ephys-postprocessing
 
 
 ### Description
@@ -23,7 +23,7 @@ In addition, [quality metrics](https://spikeinterface.readthedocs.io/en/latest/m
 
 ### Inputs
 
-The `data/` folder must include the output of the [aind-capsule-ephys-preprocessing](https://github.com/AllenNeuralDynamics/aind-capsule-ephys-preprocessing) and the [aind-capsule-ephys-spikesort-pykilosort](https://github.com/AllenNeuralDynamics/aind-capsule-ephys-spiksort-pykilosort)/[aind-capsule-ephys-spikesort-kilosort25](https://github.com/AllenNeuralDynamics/aind-capsule-ephys-spiksort-kilosort25)capsules, including the `preprocessed_{recording_name}` and `spikesorted_{recording_name}` folders.
+The `data/` folder must include the output of the [aind-ephys-preprocessing](https://github.com/AllenNeuralDynamics/aind-ephys-preprocessing) and the [aind-ephys-spikesort-pykilosort](https://github.com/AllenNeuralDynamics/aind-ephys-spiksort-pykilosort)/[aind-ephys-spikesort-kilosort25](https://github.com/AllenNeuralDynamics/aind-ephys-spiksort-kilosort25)capsules, including the `preprocessed_{recording_name}` and `spikesorted_{recording_name}` folders.
 
 ### Parameters
 
