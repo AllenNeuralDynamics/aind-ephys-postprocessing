@@ -120,8 +120,12 @@ postprocessing_params = dict(
     quality_metrics=dict(qm_params=qm_params, metric_names=qm_metric_names, n_jobs=1),
 )
 
+
+n_jobs_co = os.getenv('CO_CPUS')
+n_jobs = n_jobs_co if n_jobs_co is not None else -1
+
 job_kwargs = {
-    'n_jobs': -1,
+    'n_jobs': n_jobs,
     'chunk_duration': '1s',
     'progress_bar': True
 }
