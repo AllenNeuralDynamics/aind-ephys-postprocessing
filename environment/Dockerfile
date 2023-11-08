@@ -8,8 +8,7 @@ ARG GIT_ACCESS_TOKEN
 COPY git-askpass /
 
 RUN pip install -U --no-cache-dir \
-    aind-data-schema==0.13.66 \
-    numba==0.57.0
+    aind-data-schema==0.15.25
 
 COPY postInstall /
 RUN /postInstall
