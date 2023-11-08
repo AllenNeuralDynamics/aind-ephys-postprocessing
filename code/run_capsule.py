@@ -1,9 +1,11 @@
 import warnings
+
 warnings.filterwarnings("ignore")
 
 # GENERAL IMPORTS
 import os
-os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 import numpy as np
 from pathlib import Path
@@ -30,105 +32,104 @@ URL = "https://github.com/AllenNeuralDynamics/aind-capsule-ephys-postprocessing"
 VERSION = "0.1.0"
 
 
-sparsity_params=dict(
-    method="radius",
-    radius_um=100
-)
+sparsity_params = dict(method="radius", radius_um=100)
 
 qm_params = {
-    'presence_ratio': {'bin_duration_s': 60},
-    'snr':  {
-        'peak_sign': 'neg',
-        'peak_mode': 'extremum',
-        'random_chunk_kwargs_dict': None
+    "presence_ratio": {"bin_duration_s": 60},
+    "snr": {"peak_sign": "neg", "peak_mode": "extremum", "random_chunk_kwargs_dict": None},
+    "isi_violation": {"isi_threshold_ms": 1.5, "min_isi_ms": 0},
+    "rp_violation": {"refractory_period_ms": 1, "censored_period_ms": 0.0},
+    "sliding_rp_violation": {
+        "bin_size_ms": 0.25,
+        "window_size_s": 1,
+        "exclude_ref_period_below_ms": 0.5,
+        "max_ref_period_ms": 10,
+        "contamination_values": None,
     },
-    'isi_violation': {
-        'isi_threshold_ms': 1.5, 'min_isi_ms': 0
+    "amplitude_cutoff": {
+        "peak_sign": "neg",
+        "num_histogram_bins": 100,
+        "histogram_smoothing_value": 3,
+        "amplitudes_bins_min_ratio": 5,
     },
-    'rp_violation': {
-        'refractory_period_ms': 1, 'censored_period_ms': 0.0
+    "amplitude_median": {"peak_sign": "neg"},
+    "amplitude_cv": {
+        "average_num_spikes_per_bin": 50,
+        "percentiles": (5, 95),
+        "min_num_bins": 10,
+        "amplitude_extension": "spike_amplitudes",
     },
-    'sliding_rp_violation': {
-        'bin_size_ms': 0.25,
-        'window_size_s': 1,
-        'exclude_ref_period_below_ms': 0.5,
-        'max_ref_period_ms': 10,
-        'contamination_values': None
-    },
-    'amplitude_cutoff': {
-        'peak_sign': 'neg',
-        'num_histogram_bins': 100,
-        'histogram_smoothing_value': 3,
-        'amplitudes_bins_min_ratio': 5
-    },
-    'amplitude_median': {
-        'peak_sign': 'neg'
-    },
-    'nearest_neighbor': {
-        'max_spikes': 10000, 'min_spikes': 10, 'n_neighbors': 4
-    },
-    'nn_isolation': {
-        'max_spikes': 10000,
-        'min_spikes': 10,
-        'n_neighbors': 4,
-        'n_components': 10,
-        'radius_um': 100
-    },
-    'nn_noise_overlap': {
-        'max_spikes': 10000,
-        'min_spikes': 10,
-        'n_neighbors': 4,
-        'n_components': 10,
-        'radius_um': 100
-    }
+    "firing_range": {"bin_size_s": 5, "percentiles": (5, 95)},
+    "synchrony": {"synchrony_sizes": (2, 4, 8)},
+    "nearest_neighbor": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4},
+    "nn_isolation": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
+    "nn_noise_overlap": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
 }
-qm_metric_names = ['num_spikes', 'firing_rate', 'presence_ratio', 'snr',
-                   'isi_violation', 'rp_violation', 'sliding_rp_violation',
-                   'amplitude_cutoff', 'drift', 'isolation_distance',
-                   'l_ratio', 'd_prime']
+qm_metric_names = [
+    "num_spikes",
+    "firing_rate",
+    "presence_ratio",
+    "snr",
+    "isi_violation",
+    "rp_violation",
+    "sliding_rp_violation",
+    "amplitude_cutoff",
+    "amplitude_median",
+    "amplitude_cv",
+    "synchrony",
+    "firing_range",
+    "drift",
+    "isolation_distance",
+    "l_ratio",
+    "d_prime",
+]
 
 postprocessing_params = dict(
     duplicate_threshold=0.9,
     sparsity=sparsity_params,
-    waveforms_deduplicate=dict(ms_before=0.5,
-                               ms_after=1.5,
-                               max_spikes_per_unit=100,
-                               return_scaled=False,
-                               dtype=None,
-                               precompute_template=('average', ),
-                               use_relative_path=True,),
-    waveforms=dict(ms_before=3.0,
-                   ms_after=4.0,
-                   max_spikes_per_unit=500,
-                   return_scaled=True,
-                   dtype=None,
-                   precompute_template=('average', 'std'),
-                   use_relative_path=True,),
-    spike_amplitudes=dict(peak_sign='neg',
-                          return_scaled=True,
-                          outputs='concatenated',),
+    waveforms_deduplicate=dict(
+        ms_before=0.5,
+        ms_after=1.5,
+        max_spikes_per_unit=100,
+        return_scaled=False,
+        dtype=None,
+        precompute_template=("average",),
+        use_relative_path=True,
+    ),
+    waveforms=dict(
+        ms_before=3.0,
+        ms_after=4.0,
+        max_spikes_per_unit=500,
+        return_scaled=True,
+        dtype=None,
+        precompute_template=("average", "std"),
+        use_relative_path=True,
+    ),
+    spike_amplitudes=dict(
+        peak_sign="neg",
+        return_scaled=True,
+        outputs="concatenated",
+    ),
     similarity=dict(method="cosine_similarity"),
-    correlograms=dict(window_ms=100.0,
-                      bin_ms=2.0,),
-    isis=dict(window_ms=100.0,
-              bin_ms=5.0,),
+    correlograms=dict(
+        window_ms=50.0,
+        bin_ms=1.0,
+    ),
+    isis=dict(
+        window_ms=100.0,
+        bin_ms=5.0,
+    ),
     locations=dict(method="monopolar_triangulation"),
-    template_metrics=dict(upsampling_factor=10, sparsity=None),
-    principal_components=dict(n_components=5,
-                              mode='by_channel_local',
-                              whiten=True),
+    template_metrics=dict(upsampling_factor=10, sparsity=None, include_multi_channel_metrics=True),
+    principal_components=dict(n_components=5, mode="by_channel_local", whiten=True),
     quality_metrics=dict(qm_params=qm_params, metric_names=qm_metric_names, n_jobs=1),
 )
 
 
-n_jobs_co = os.getenv('CO_CPUS')
+n_jobs_co = os.getenv("CO_CPUS")
 n_jobs = int(n_jobs_co) if n_jobs_co is not None else -1
 
-job_kwargs = {
-    'n_jobs': n_jobs,
-    'chunk_duration': '1s',
-    'progress_bar': True
-}
+job_kwargs = {"n_jobs": n_jobs, "chunk_duration": "1s", "progress_bar": True}
 
 data_folder = Path("../data/")
 scratc_folder = Path("../scratch")
@@ -140,7 +141,7 @@ tmp_folder.mkdir()
 
 if __name__ == "__main__":
     data_process_prefix = "data_process_postprocessing"
-    
+
     si.set_global_job_kwargs(**job_kwargs)
 
     ####### POSTPROCESSING ########
@@ -168,7 +169,9 @@ if __name__ == "__main__":
             with open(json_file, "r") as f:
                 config = json.load(f)
             recording_name = config["recording_name"]
-            assert (preprocessed_folder / f"preprocessed_{recording_name}").is_dir(), f"Preprocessed folder for {recording_name} not found!"
+            assert (
+                preprocessed_folder / f"preprocessed_{recording_name}"
+            ).is_dir(), f"Preprocessed folder for {recording_name} not found!"
             recording_names.append(recording_name)
     else:
         recording_names = [("_").join(p.name.split("_")[1:]) for p in preprocessed_folders]
@@ -193,18 +196,25 @@ if __name__ == "__main__":
 
         # first extract some raw waveforms in memory to deduplicate based on peak alignment
         wf_dedup_folder = tmp_folder / "postprocessed" / recording_name
-        we_raw = si.extract_waveforms(recording, sorting, folder=wf_dedup_folder,
-                                      **postprocessing_params["waveforms_deduplicate"])
+        we_raw = si.extract_waveforms(
+            recording, sorting, folder=wf_dedup_folder, **postprocessing_params["waveforms_deduplicate"]
+        )
         # de-duplication
-        sorting_deduplicated = sc.remove_redundant_units(we_raw, duplicate_threshold=postprocessing_params["duplicate_threshold"])
-        print(f"\tNumber of original units: {len(we_raw.sorting.unit_ids)} -- Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}")
+        sorting_deduplicated = sc.remove_redundant_units(
+            we_raw, duplicate_threshold=postprocessing_params["duplicate_threshold"]
+        )
+        print(
+            f"\tNumber of original units: {len(we_raw.sorting.unit_ids)} -- Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}"
+        )
         n_duplicated = int(len(sorting.unit_ids) - len(sorting_deduplicated.unit_ids))
         postprocessing_notes += f"\n- Removed {n_duplicated} duplicated units.\n"
         deduplicated_unit_ids = sorting_deduplicated.unit_ids
         # use existing deduplicated waveforms to compute sparsity
         sparsity_raw = si.compute_sparsity(we_raw, **sparsity_params)
         sparsity_mask = sparsity_raw.mask[sorting.ids_to_indices(deduplicated_unit_ids), :]
-        sparsity = si.ChannelSparsity(mask=sparsity_mask, unit_ids=deduplicated_unit_ids, channel_ids=recording.channel_ids)
+        sparsity = si.ChannelSparsity(
+            mask=sparsity_mask, unit_ids=deduplicated_unit_ids, channel_ids=recording.channel_ids
+        )
         shutil.rmtree(wf_dedup_folder)
         del we_raw
 
@@ -213,9 +223,15 @@ if __name__ == "__main__":
 
         # now extract waveforms on de-duplicated units
         print(f"\tSaving sparse de-duplicated waveform extractor folder")
-        we = si.extract_waveforms(recording, sorting_deduplicated, 
-                                  folder=postprocessing_output_folder, sparsity=sparsity, sparse=True,
-                                  overwrite=True, **postprocessing_params["waveforms"])
+        we = si.extract_waveforms(
+            recording,
+            sorting_deduplicated,
+            folder=postprocessing_output_folder,
+            sparsity=sparsity,
+            sparse=True,
+            overwrite=True,
+            **postprocessing_params["waveforms"],
+        )
         print("\tComputing spike amplitides")
         amps = spost.compute_spike_amplitudes(we, **postprocessing_params["spike_amplitudes"])
         print("\tComputing unit locations")
@@ -240,25 +256,22 @@ if __name__ == "__main__":
 
         # save params in output
         postprocessing_params["recording_name"] = recording_name
-        postprocessing_outputs = dict(
-            duplicated_units=n_duplicated
-        )
+        postprocessing_outputs = dict(duplicated_units=n_duplicated)
         postprocessing_process = DataProcess(
-                name="Ephys postprocessing",
-                version=VERSION, # either release or git commit
-                start_date_time=datetime_start_postprocessing,
-                end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
-                input_location=str(data_folder),
-                output_location=str(results_folder),
-                code_url=URL,
-                parameters=postprocessing_params,
-                outputs=postprocessing_outputs,
-                notes=postprocessing_notes
-            )
+            name="Ephys postprocessing",
+            version=VERSION,  # either release or git commit
+            start_date_time=datetime_start_postprocessing,
+            end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
+            input_location=str(data_folder),
+            output_location=str(results_folder),
+            code_url=URL,
+            parameters=postprocessing_params,
+            outputs=postprocessing_outputs,
+            notes=postprocessing_notes,
+        )
         with open(postprocessing_output_process_json, "w") as f:
             f.write(postprocessing_process.json(indent=3))
 
     t_postprocessing_end_all = time.perf_counter()
     elapsed_time_postprocessing_all = np.round(t_postprocessing_end_all - t_postprocessing_start_all, 2)
     print(f"POSTPROCESSING time: {elapsed_time_postprocessing_all}s")
-
