@@ -93,6 +93,7 @@ postprocessing_params = dict(
         max_spikes_per_unit=100,
         return_scaled=False,
         dtype=None,
+        sparse=False,
         precompute_template=("average",),
         use_relative_path=True,
     ),
@@ -133,10 +134,10 @@ job_kwargs = {"n_jobs": n_jobs, "chunk_duration": "1s", "progress_bar": False}
 print(job_kwargs)
 
 data_folder = Path("../data/")
-scratc_folder = Path("../scratch")
+scratch_folder = Path("../scratch")
 results_folder = Path("../results/")
 
-tmp_folder = results_folder / "tmp"
+tmp_folder = scratch_folder / "tmp"
 tmp_folder.mkdir()
 
 
@@ -196,6 +197,7 @@ if __name__ == "__main__":
         sorting = si.load_extractor(sorted_folder)
 
         # first extract some raw waveforms in memory to deduplicate based on peak alignment
+        print(f"\t\tExtracting raw waveforms for deduplication")
         wf_dedup_folder = tmp_folder / "postprocessed" / recording_name
         we_raw = si.extract_waveforms(
             recording, sorting, folder=wf_dedup_folder, **postprocessing_params["waveforms_deduplicate"]
