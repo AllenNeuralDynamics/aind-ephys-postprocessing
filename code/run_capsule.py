@@ -127,7 +127,7 @@ postprocessing_params = dict(
 
 
 n_jobs_co = os.getenv("CO_CPUS")
-n_jobs = int(n_jobs_co) if n_jobs_co is not None else -1
+n_jobs = int(0.8 * n_jobs_co) if n_jobs_co is not None else 0.8
 
 job_kwargs = {"n_jobs": n_jobs, "chunk_duration": "1s", "progress_bar": False}
 
