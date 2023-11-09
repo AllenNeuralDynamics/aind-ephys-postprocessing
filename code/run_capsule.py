@@ -129,7 +129,7 @@ postprocessing_params = dict(
 n_jobs_co = os.getenv("CO_CPUS")
 n_jobs = int(n_jobs_co) if n_jobs_co is not None else -1
 
-job_kwargs = {"n_jobs": n_jobs, "chunk_duration": "1s", "progress_bar": True}
+job_kwargs = {"n_jobs": n_jobs, "chunk_duration": "1s", "progress_bar": False}
 
 data_folder = Path("../data/")
 scratc_folder = Path("../scratch")
@@ -259,7 +259,7 @@ if __name__ == "__main__":
         postprocessing_outputs = dict(duplicated_units=n_duplicated)
         postprocessing_process = DataProcess(
             name="Ephys postprocessing",
-            version=VERSION,  # either release or git commit
+            software_version=VERSION,  # either release or git commit
             start_date_time=datetime_start_postprocessing,
             end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
             input_location=str(data_folder),
