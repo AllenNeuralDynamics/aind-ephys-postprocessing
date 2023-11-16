@@ -83,6 +83,7 @@ qm_metric_names = [
     "isolation_distance",
     "l_ratio",
     "d_prime",
+    "nearest_neighbor",
     "silhouette"
 ]
 
