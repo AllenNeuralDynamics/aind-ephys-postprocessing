@@ -61,9 +61,10 @@ qm_params = {
     },
     "firing_range": {"bin_size_s": 5, "percentiles": (5, 95)},
     "synchrony": {"synchrony_sizes": (2, 4, 8)},
-    "nearest_neighbor": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4},
+    "nearest_neighbor": {"max_spikes": 10000, "n_neighbors": 4},
     "nn_isolation": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
     "nn_noise_overlap": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
+    "silhouette": {"method": ("simplified",)}
 }
 qm_metric_names = [
     "num_spikes",
@@ -82,6 +83,7 @@ qm_metric_names = [
     "isolation_distance",
     "l_ratio",
     "d_prime",
+    "silhouette"
 ]
 
 postprocessing_params = dict(
@@ -93,6 +95,7 @@ postprocessing_params = dict(
         max_spikes_per_unit=100,
         return_scaled=False,
         dtype=None,
+        sparse=False,
         precompute_template=("average",),
         use_relative_path=True,
     ),
@@ -127,15 +130,16 @@ postprocessing_params = dict(
 
 
 n_jobs_co = os.getenv("CO_CPUS")
-n_jobs = int(n_jobs_co) if n_jobs_co is not None else -1
+n_jobs = int(0.8 * int(n_jobs_co)) if n_jobs_co is not None else 0.8
 
-job_kwargs = {"n_jobs": n_jobs, "chunk_duration": "1s", "progress_bar": True}
+job_kwargs = {"n_jobs": n_jobs, "chunk_duration": "1s", "progress_bar": False}
+print(job_kwargs)
 
 data_folder = Path("../data/")
-scratc_folder = Path("../scratch")
+scratch_folder = Path("../scratch")
 results_folder = Path("../results/")
 
-tmp_folder = results_folder / "tmp"
+tmp_folder = scratch_folder / "tmp"
 tmp_folder.mkdir()
 
 
@@ -195,6 +199,7 @@ if __name__ == "__main__":
         sorting = si.load_extractor(sorted_folder)
 
         # first extract some raw waveforms in memory to deduplicate based on peak alignment
+        print(f"\t\tExtracting raw waveforms for deduplication")
         wf_dedup_folder = tmp_folder / "postprocessed" / recording_name
         we_raw = si.extract_waveforms(
             recording, sorting, folder=wf_dedup_folder, **postprocessing_params["waveforms_deduplicate"]
@@ -259,7 +264,7 @@ if __name__ == "__main__":
         postprocessing_outputs = dict(duplicated_units=n_duplicated)
         postprocessing_process = DataProcess(
             name="Ephys postprocessing",
-            version=VERSION,  # either release or git commit
+            software_version=VERSION,  # either release or git commit
             start_date_time=datetime_start_postprocessing,
             end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
             input_location=str(data_folder),
