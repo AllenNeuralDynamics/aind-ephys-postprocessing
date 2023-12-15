@@ -1,7 +1,10 @@
-# hash:sha256:0b00670a57cc539530bf1f9a766cba943edb4ab6147998b9a9286d39e249105e
+# hash:sha256:15f52185b0a5cf0566bbe6a294766720f46aedd63df1588e2b314156aa1b6ffe
 FROM registry.codeocean.allenneuraldynamics.org/codeocean/jupyterlab:3.6.1-miniconda4.12.0-python3.9-ubuntu20.04
 
 ARG DEBIAN_FRONTEND=noninteractive
+ARG AWS_ACCESS_KEY_ID
+ARG AWS_DEFAULT_REGION
+ARG AWS_SECRET_ACCESS_KEY
 
 ARG GIT_ASKPASS
 ARG GIT_ACCESS_TOKEN
