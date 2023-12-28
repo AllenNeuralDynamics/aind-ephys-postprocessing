@@ -24,8 +24,7 @@ import spikeinterface.curation as sc
 from spikeinterface.core.core_tools import check_json
 
 # AIND
-from aind_data_schema import Processing
-from aind_data_schema.processing import DataProcess
+from aind_data_schema.core.processing import DataProcess
 
 
 URL = "https://github.com/AllenNeuralDynamics/aind-capsule-ephys-postprocessing"
@@ -276,7 +275,7 @@ if __name__ == "__main__":
             notes=postprocessing_notes,
         )
         with open(postprocessing_output_process_json, "w") as f:
-            f.write(postprocessing_process.json(indent=3))
+            f.write(postprocessing_process.model_dump_json(indent=3))
 
     t_postprocessing_end_all = time.perf_counter()
     elapsed_time_postprocessing_all = np.round(t_postprocessing_end_all - t_postprocessing_start_all, 2)
