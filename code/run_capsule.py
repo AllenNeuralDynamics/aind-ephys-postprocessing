@@ -5,7 +5,7 @@ warnings.filterwarnings("ignore")
 # GENERAL IMPORTS
 import os
 
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
+# os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 import numpy as np
 from pathlib import Path
@@ -24,8 +24,7 @@ import spikeinterface.curation as sc
 from spikeinterface.core.core_tools import check_json
 
 # AIND
-from aind_data_schema import Processing
-from aind_data_schema.processing import DataProcess
+from aind_data_schema.core.processing import DataProcess
 
 
 URL = "https://github.com/AllenNeuralDynamics/aind-capsule-ephys-postprocessing"
@@ -64,7 +63,7 @@ qm_params = {
     "nearest_neighbor": {"max_spikes": 10000, "n_neighbors": 4},
     "nn_isolation": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
     "nn_noise_overlap": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
-    "silhouette": {"method": ("simplified",)}
+    "silhouette": {"method": ("simplified",)},
 }
 qm_metric_names = [
     "num_spikes",
@@ -83,7 +82,8 @@ qm_metric_names = [
     "isolation_distance",
     "l_ratio",
     "d_prime",
-    "silhouette"
+    "nearest_neighbor",
+    "silhouette",
 ]
 
 postprocessing_params = dict(
@@ -275,7 +275,7 @@ if __name__ == "__main__":
             notes=postprocessing_notes,
         )
         with open(postprocessing_output_process_json, "w") as f:
-            f.write(postprocessing_process.json(indent=3))
+            f.write(postprocessing_process.model_dump_json(indent=3))
 
     t_postprocessing_end_all = time.perf_counter()
     elapsed_time_postprocessing_all = np.round(t_postprocessing_end_all - t_postprocessing_start_all, 2)
