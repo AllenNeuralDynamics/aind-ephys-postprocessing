@@ -196,7 +196,11 @@ if __name__ == "__main__":
         if not sorted_folder.is_dir():
             raise FileNotFoundError(f"Spike sorted data for {recording_name} not found!")
 
-        sorting = si.load_extractor(sorted_folder)
+        try:
+            sorting = si.load_extractor(sorted_folder)
+        except ValueError as e:
+            print(f"Spike sorting failed on {recording_name}. Skipping postprocessing")
+            continue
 
         # first extract some raw waveforms in memory to deduplicate based on peak alignment
         print(f"\t\tExtracting raw waveforms for deduplication")
