@@ -201,7 +201,7 @@ if __name__ == "__main__":
         pc = spost.compute_principal_components(we, **postprocessing_params["principal_components"])
         print("\tComputing quality metrics")
         qm = sqm.compute_quality_metrics(
-            we, metric_names=quality_metrics_names, **postprocessing_params["quality_metrics"]
+            we, metric_names=quality_metrics_names, **quality_metrics_params
         )
 
         t_postprocessing_end = time.perf_counter()
