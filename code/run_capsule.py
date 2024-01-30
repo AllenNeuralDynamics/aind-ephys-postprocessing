@@ -5,7 +5,7 @@ warnings.filterwarnings("ignore")
 # GENERAL IMPORTS
 import os
 
-# this is needed to limit the number of scipy threads 
+# this is needed to limit the number of scipy threads
 # and let spikeinterface handle parallelization
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
@@ -39,9 +39,7 @@ results_folder = Path("../results/")
 parser = argparse.ArgumentParser(description="Postprocess ecephys data")
 
 n_jobs_group = parser.add_mutually_exclusive_group()
-n_jobs_help = (
-    "Duration of clipped recording in debug mode. Default is 30 seconds. Only used if debug is enabled"
-)
+n_jobs_help = "Duration of clipped recording in debug mode. Default is 30 seconds. Only used if debug is enabled"
 n_jobs_help = (
     "Number of jobs to use for parallel processing. Default is -1 (all available cores). "
     "It can also be a float between 0 and 1 to use a fraction of available cores"
@@ -202,7 +200,9 @@ if __name__ == "__main__":
         print("\tComputing PCA")
         pc = spost.compute_principal_components(we, **postprocessing_params["principal_components"])
         print("\tComputing quality metrics")
-        qm = sqm.compute_quality_metrics(we, metric_names=quality_metrics_names, **postprocessing_params["quality_metrics"])
+        qm = sqm.compute_quality_metrics(
+            we, metric_names=quality_metrics_names, **postprocessing_params["quality_metrics"]
+        )
 
         t_postprocessing_end = time.perf_counter()
         elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
