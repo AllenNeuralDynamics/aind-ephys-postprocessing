@@ -28,7 +28,7 @@ from spikeinterface.core.core_tools import check_json
 # AIND
 from aind_data_schema.core.processing import DataProcess
 
-URL = "https://github.com/AllenNeuralDynamics/aind-capsule-ephys-postprocessing"
+URL = "https://github.com/AllenNeuralDynamics/aind-ephys-postprocessing"
 VERSION = "0.1.0"
 
 data_folder = Path("../data/")
