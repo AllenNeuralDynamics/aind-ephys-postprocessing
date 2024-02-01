@@ -200,9 +200,7 @@ if __name__ == "__main__":
         print("\tComputing PCA")
         pc = spost.compute_principal_components(we, **postprocessing_params["principal_components"])
         print("\tComputing quality metrics")
-        qm = sqm.compute_quality_metrics(
-            we, metric_names=quality_metrics_names, qm_params=quality_metrics_params
-        )
+        qm = sqm.compute_quality_metrics(we, metric_names=quality_metrics_names, qm_params=quality_metrics_params)
 
         t_postprocessing_end = time.perf_counter()
         elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
