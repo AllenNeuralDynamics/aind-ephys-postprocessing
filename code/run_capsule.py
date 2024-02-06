@@ -5,13 +5,15 @@ warnings.filterwarnings("ignore")
 # GENERAL IMPORTS
 import os
 
-# os.environ["OPENBLAS_NUM_THREADS"] = "1"
+# this is needed to limit the number of scipy threads
+# and let spikeinterface handle parallelization
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 import numpy as np
 from pathlib import Path
 import shutil
 import json
-import sys
+import argparse
 import time
 from datetime import datetime, timedelta
 
@@ -26,131 +28,71 @@ from spikeinterface.core.core_tools import check_json
 # AIND
 from aind_data_schema.core.processing import DataProcess
 
-
-URL = "https://github.com/AllenNeuralDynamics/aind-capsule-ephys-postprocessing"
+URL = "https://github.com/AllenNeuralDynamics/aind-ephys-postprocessing"
 VERSION = "0.1.0"
-
-
-sparsity_params = dict(method="radius", radius_um=100)
-
-qm_params = {
-    "presence_ratio": {"bin_duration_s": 60},
-    "snr": {"peak_sign": "neg", "peak_mode": "extremum", "random_chunk_kwargs_dict": None},
-    "isi_violation": {"isi_threshold_ms": 1.5, "min_isi_ms": 0},
-    "rp_violation": {"refractory_period_ms": 1, "censored_period_ms": 0.0},
-    "sliding_rp_violation": {
-        "bin_size_ms": 0.25,
-        "window_size_s": 1,
-        "exclude_ref_period_below_ms": 0.5,
-        "max_ref_period_ms": 10,
-        "contamination_values": None,
-    },
-    "amplitude_cutoff": {
-        "peak_sign": "neg",
-        "num_histogram_bins": 100,
-        "histogram_smoothing_value": 3,
-        "amplitudes_bins_min_ratio": 5,
-    },
-    "amplitude_median": {"peak_sign": "neg"},
-    "amplitude_cv": {
-        "average_num_spikes_per_bin": 50,
-        "percentiles": (5, 95),
-        "min_num_bins": 10,
-        "amplitude_extension": "spike_amplitudes",
-    },
-    "firing_range": {"bin_size_s": 5, "percentiles": (5, 95)},
-    "synchrony": {"synchrony_sizes": (2, 4, 8)},
-    "nearest_neighbor": {"max_spikes": 10000, "n_neighbors": 4},
-    "nn_isolation": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
-    "nn_noise_overlap": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
-    "silhouette": {"method": ("simplified",)},
-}
-qm_metric_names = [
-    "num_spikes",
-    "firing_rate",
-    "presence_ratio",
-    "snr",
-    "isi_violation",
-    "rp_violation",
-    "sliding_rp_violation",
-    "amplitude_cutoff",
-    "amplitude_median",
-    "amplitude_cv",
-    "synchrony",
-    "firing_range",
-    "drift",
-    "isolation_distance",
-    "l_ratio",
-    "d_prime",
-    "nearest_neighbor",
-    "silhouette",
-]
-
-postprocessing_params = dict(
-    duplicate_threshold=0.9,
-    sparsity=sparsity_params,
-    waveforms_deduplicate=dict(
-        ms_before=0.5,
-        ms_after=1.5,
-        max_spikes_per_unit=100,
-        return_scaled=False,
-        dtype=None,
-        sparse=False,
-        precompute_template=("average",),
-        use_relative_path=True,
-    ),
-    waveforms=dict(
-        ms_before=3.0,
-        ms_after=4.0,
-        max_spikes_per_unit=500,
-        return_scaled=True,
-        dtype=None,
-        precompute_template=("average", "std"),
-        use_relative_path=True,
-    ),
-    spike_amplitudes=dict(
-        peak_sign="neg",
-        return_scaled=True,
-        outputs="concatenated",
-    ),
-    similarity=dict(method="cosine_similarity"),
-    correlograms=dict(
-        window_ms=50.0,
-        bin_ms=1.0,
-    ),
-    isis=dict(
-        window_ms=100.0,
-        bin_ms=5.0,
-    ),
-    locations=dict(method="monopolar_triangulation"),
-    template_metrics=dict(upsampling_factor=10, sparsity=None, include_multi_channel_metrics=True),
-    principal_components=dict(n_components=5, mode="by_channel_local", whiten=True),
-    quality_metrics=dict(qm_params=qm_params, metric_names=qm_metric_names, n_jobs=1),
-)
-
-
-n_jobs_co = os.getenv("CO_CPUS")
-n_jobs = int(0.8 * int(n_jobs_co)) if n_jobs_co is not None else 0.8
-
-job_kwargs = {"n_jobs": n_jobs, "chunk_duration": "1s", "progress_bar": False}
-print(job_kwargs)
 
 data_folder = Path("../data/")
 scratch_folder = Path("../scratch")
 results_folder = Path("../results/")
 
-tmp_folder = scratch_folder / "tmp"
-tmp_folder.mkdir()
+# Define argument parser
+parser = argparse.ArgumentParser(description="Postprocess ecephys data")
+
+n_jobs_group = parser.add_mutually_exclusive_group()
+n_jobs_help = "Duration of clipped recording in debug mode. Default is 30 seconds. Only used if debug is enabled"
+n_jobs_help = (
+    "Number of jobs to use for parallel processing. Default is -1 (all available cores). "
+    "It can also be a float between 0 and 1 to use a fraction of available cores"
+)
+n_jobs_group.add_argument("static_n_jobs", nargs="?", default="-1", help=n_jobs_help)
+n_jobs_group.add_argument("--n-jobs", default="-1", help=n_jobs_help)
+
+params_group = parser.add_mutually_exclusive_group()
+params_file_help = "Optional json file with parameters"
+params_group.add_argument("static_params_file", nargs="?", default=None, help=params_file_help)
+params_group.add_argument("--params-file", default=None, help=params_file_help)
+params_group.add_argument("--params-str", default=None, help="Optional json string with parameters")
 
 
 if __name__ == "__main__":
+    args = parser.parse_args()
+
+    N_JOBS = args.static_n_jobs or args.n_jobs
+    N_JOBS = int(N_JOBS) if not N_JOBS.startswith("0.") else float(N_JOBS)
+    PARAMS_FILE = args.static_params_file or args.params_file
+    PARAMS_STR = args.params_str
+
+    # Use CO_CPUS env variable if available
+    N_JOBS_CO = os.getenv("CO_CPUS")
+    N_JOBS = int(N_JOBS_CO) if N_JOBS_CO is not None else N_JOBS
+
+    if PARAMS_FILE is not None:
+        print(f"\nUsing custom parameter file: {PARAMS_FILE}")
+        with open(PARAMS_FILE, "r") as f:
+            processing_params = json.load(f)
+    elif PARAMS_STR is not None:
+        processing_params = json.loads(PARAMS_STR)
+    else:
+        with open("params.json", "r") as f:
+            processing_params = json.load(f)
+
     data_process_prefix = "data_process_postprocessing"
 
+    job_kwargs = processing_params["job_kwargs"]
+    job_kwargs["n_jobs"] = N_JOBS
     si.set_global_job_kwargs(**job_kwargs)
+
+    postprocessing_params = processing_params["postprocessing"]
+    sparsity_params = processing_params["sparsity"]
+    quality_metrics_names = processing_params["quality_metrics_names"]
+    quality_metrics_params = processing_params["quality_metrics"]
 
     ####### POSTPROCESSING ########
     print("\nPOSTPROCESSING")
     t_postprocessing_start_all = time.perf_counter()
+
+    tmp_folder = scratch_folder / "tmp"
+    tmp_folder.mkdir()
 
     # check if test
     if (data_folder / "preprocessing_pipeline_output_test").is_dir():
@@ -196,7 +138,11 @@ if __name__ == "__main__":
         if not sorted_folder.is_dir():
             raise FileNotFoundError(f"Spike sorted data for {recording_name} not found!")
 
-        sorting = si.load_extractor(sorted_folder)
+        try:
+            sorting = si.load_extractor(sorted_folder)
+        except ValueError as e:
+            print(f"Spike sorting failed on {recording_name}. Skipping postprocessing")
+            continue
 
         # first extract some raw waveforms in memory to deduplicate based on peak alignment
         print(f"\t\tExtracting raw waveforms for deduplication")
@@ -254,7 +200,7 @@ if __name__ == "__main__":
         print("\tComputing PCA")
         pc = spost.compute_principal_components(we, **postprocessing_params["principal_components"])
         print("\tComputing quality metrics")
-        qm = sqm.compute_quality_metrics(we, **postprocessing_params["quality_metrics"])
+        qm = sqm.compute_quality_metrics(we, metric_names=quality_metrics_names, qm_params=quality_metrics_params)
 
         t_postprocessing_end = time.perf_counter()
         elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
