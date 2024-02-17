@@ -142,6 +142,8 @@ if __name__ == "__main__":
             sorting = si.load_extractor(sorted_folder)
         except ValueError as e:
             print(f"Spike sorting failed on {recording_name}. Skipping postprocessing")
+            # create an empty result folder (needed for pipeline)
+            postprocessing_output_folder.mkdir()
             continue
 
         # first extract some raw waveforms in memory to deduplicate based on peak alignment
