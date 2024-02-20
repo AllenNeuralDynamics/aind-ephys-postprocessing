@@ -1,5 +1,22 @@
 metadata_version: 1
 name: Postprocess Ecephys
-description: Basic structure of a capsule to be customized as needed.
+description: |-
+  This capsule is designed to postprocess ephys data for the AIND pipeline.
+
+  This capsule first removes redundant/duplicate units (sharing >90% of the spikes). Then, it computes sparse waveforms and then in computes several additional postprocessing data, including:
+
+  - spike amplitudes
+  - unit locations
+  - spike locations
+  - correlograms
+  - ISI histograms
+  - template similarity
+  - template metrics
+  - PCA scores
+
+  In addition, quality metrics are also computed here. Postprocessed data are used downstream for spike sorting curation and visualization.
+tags:
+- ecephys
 authors:
 - name: AIND
+- name: Alessio Buccino
