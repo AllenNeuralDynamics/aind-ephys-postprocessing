@@ -145,7 +145,7 @@ if __name__ == "__main__":
             # create an empty result file (needed for pipeline)
             postprocessing_output_folder.mkdir()
             mock_array = np.array([], dtype=bool)
-            np.save(postprocessing_output_folder / f"placeholder.npy", mock_array)
+            np.save(postprocessing_output_folder / "placeholder.npy", mock_array)
             continue
 
         # first extract some raw waveforms in memory to deduplicate based on peak alignment
