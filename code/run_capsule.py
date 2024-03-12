@@ -132,7 +132,16 @@ if __name__ == "__main__":
         postprocessing_output_folder = results_folder / f"postprocessed_{recording_name}"
         postprocessing_sorting_output_folder = results_folder / f"postprocessed-sorting_{recording_name}"
 
-        recording = si.load_extractor(preprocessed_folder / f"preprocessed_{recording_name}")
+        try:
+            recording = si.load_extractor(preprocessed_folder / f"preprocessed_{recording_name}")
+        except ValueError as e:
+            print(f"Spike sorting skipped on {recording_name}. Skipping postprocessing")
+            # create an empty result file (needed for pipeline)
+            postprocessing_output_folder.mkdir()
+            mock_array = np.array([], dtype=bool)
+            np.save(postprocessing_output_folder / "placeholder.npy", mock_array)
+            continue
+
         # make sure we have spikesorted output for the block-stream
         sorted_folder = spikesorted_folder / f"spikesorted_{recording_name}"
         if not sorted_folder.is_dir():
