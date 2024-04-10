@@ -91,9 +91,6 @@ if __name__ == "__main__":
     print("\nPOSTPROCESSING")
     t_postprocessing_start_all = time.perf_counter()
 
-    tmp_folder = scratch_folder / "tmp"
-    tmp_folder.mkdir()
-
     # check if test
     if (data_folder / "preprocessing_pipeline_output_test").is_dir():
         print("\n*******************\n**** TEST MODE ****\n*******************\n")
@@ -157,63 +154,54 @@ if __name__ == "__main__":
             np.save(postprocessing_output_folder / "placeholder.npy", mock_array)
             continue
 
-        # first extract some raw waveforms in memory to deduplicate based on peak alignment
-        print(f"\t\tExtracting raw waveforms for deduplication")
-        wf_dedup_folder = tmp_folder / "postprocessed" / recording_name
-        we_raw = si.extract_waveforms(
-            recording, sorting, folder=wf_dedup_folder, **postprocessing_params["waveforms_deduplicate"]
+        print(f"\t\tCreating sorting analyzer")
+        sorting_analyzer_full = si.create_sorting_analyzer(
+            sorting=sorting,
+            recording=recording,
+            sparse=True,
+            **sparsity_params
         )
+        # compute templates for de-duplication
+        # now postprocess
+        analyzer_dict = postprocessing_params.copy()
+        analyzer_dict.pop("duplicate_threshold")
+        random_spikes_params = analyzer_dict.pop("random_spikes")
+        sorting_analyzer_full.compute("random_spikes", **random_spikes_params)
+        sorting_analyzer_full.compute("templates")
         # de-duplication
         sorting_deduplicated = sc.remove_redundant_units(
-            we_raw, duplicate_threshold=postprocessing_params["duplicate_threshold"]
+            sorting_analyzer_full, duplicate_threshold=postprocessing_params["duplicate_threshold"]
         )
         print(
-            f"\tNumber of original units: {len(we_raw.sorting.unit_ids)} -- Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}"
+            f"\tNumber of original units: {len(sorting.unit_ids)} -- Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}"
         )
         n_duplicated = int(len(sorting.unit_ids) - len(sorting_deduplicated.unit_ids))
         postprocessing_notes += f"\n- Removed {n_duplicated} duplicated units.\n"
         deduplicated_unit_ids = sorting_deduplicated.unit_ids
-        # use existing deduplicated waveforms to compute sparsity
-        sparsity_raw = si.compute_sparsity(we_raw, **sparsity_params)
-        sparsity_mask = sparsity_raw.mask[sorting.ids_to_indices(deduplicated_unit_ids), :]
-        sparsity = si.ChannelSparsity(
-            mask=sparsity_mask, unit_ids=deduplicated_unit_ids, channel_ids=recording.channel_ids
-        )
-        shutil.rmtree(wf_dedup_folder)
-        del we_raw
 
-        # this is a trick to make the postprocessed folder "self-contained
-        sorting_deduplicated = sorting_deduplicated.save(folder=postprocessing_sorting_output_folder)
+        sorting_analyzer = sorting_analyzer_full.select_units(sorting_deduplicated.unit_ids)
 
-        # now extract waveforms on de-duplicated units
-        print(f"\tSaving sparse de-duplicated waveform extractor folder")
-        we = si.extract_waveforms(
-            recording,
-            sorting_deduplicated,
-            folder=postprocessing_output_folder,
-            sparsity=sparsity,
-            sparse=True,
-            overwrite=True,
-            **postprocessing_params["waveforms"],
+        # save
+        sorting_analyzer = sorting_analyzer.save_as(
+            format="binary_folder",
+            folder=postprocessing_output_folder
         )
-        print("\tComputing spike amplitides")
-        amps = spost.compute_spike_amplitudes(we, **postprocessing_params["spike_amplitudes"])
-        print("\tComputing unit locations")
-        unit_locs = spost.compute_unit_locations(we, **postprocessing_params["unit_locations"])
-        print("\tComputing spike locations")
-        spike_locs = spost.compute_spike_locations(we, **postprocessing_params["spike_locations"])
-        print("\tComputing correlograms")
-        corr = spost.compute_correlograms(we, **postprocessing_params["correlograms"])
-        print("\tComputing ISI histograms")
-        tm = spost.compute_isi_histograms(we, **postprocessing_params["isis"])
-        print("\tComputing template similarity")
-        sim = spost.compute_template_similarity(we, **postprocessing_params["similarity"])
-        print("\tComputing template metrics")
-        tm = spost.compute_template_metrics(we, **postprocessing_params["template_metrics"])
-        print("\tComputing PCA")
-        pc = spost.compute_principal_components(we, **postprocessing_params["principal_components"])
+
+        # now re-organize entries and postprocess
+        analyzer_dict_sorted = {}
+        analyzer_dict_sorted["waveforms"] = analyzer_dict.pop("waveforms")
+        analyzer_dict_sorted["templates"] = {}
+        analyzer_dict_sorted.update(analyzer_dict)
+
+        print(f"\tComputing all postprocessing extensions")
+        sorting_analyzer.compute(analyzer_dict_sorted)
+
         print("\tComputing quality metrics")
-        qm = sqm.compute_quality_metrics(we, metric_names=quality_metrics_names, qm_params=quality_metrics_params)
+        qm = sorting_analyzer.compute(
+            "quality_metrics",
+            metric_names=quality_metrics_names,
+            qm_params=quality_metrics_params
+        )
 
         t_postprocessing_end = time.perf_counter()
         elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
