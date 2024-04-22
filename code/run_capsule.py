@@ -159,12 +159,14 @@ if __name__ == "__main__":
             sorting=sorting,
             recording=recording,
             sparse=True,
+            return_scaled=postprocessing_params["return_scaled"],
             **sparsity_params
         )
         # compute templates for de-duplication
         # now postprocess
         analyzer_dict = postprocessing_params.copy()
         analyzer_dict.pop("duplicate_threshold")
+        analyzer_dict.pop("return_scaled")
         random_spikes_params = analyzer_dict.pop("random_spikes")
         sorting_analyzer_full.compute("random_spikes", **random_spikes_params)
         sorting_analyzer_full.compute("templates")

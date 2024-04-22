@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-git clone https://github.com/SpikeInterface/spikeinterface.git
+git clone https://github.com/alejoe91/spikeinterface.git
 cd spikeinterface
-git checkout 2f526296e2bf355cdbd2f684010fd565f0a74068
+git checkout fix-get-templates-read-only
 pip install --no-cache-dir .[full,widgets]
 cd ..

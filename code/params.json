@@ -9,6 +9,7 @@
     },
     "postprocessing": {
         "duplicate_threshold": 0.9,
+	    "return_scaled": true,
         "random_spikes": {
             "max_spikes_per_unit": 500,
             "method": "uniform",
@@ -18,18 +19,15 @@
         "noise_levels": {
 	    "num_chunks_per_segment": 20,
 	    "chunk_size": 10000,
-	    "return_scaled": true,
 	    "seed": null
         },
         "waveforms": {
             "ms_before": 3.0,
             "ms_after": 4.0,
-            "return_scaled": true,
             "dtype": null
         },
         "spike_amplitudes": {
-            "peak_sign": "neg",
-            "return_scaled": true
+            "peak_sign": "neg"
         },
         "template_similarity": {
             "method": "cosine_similarity"
