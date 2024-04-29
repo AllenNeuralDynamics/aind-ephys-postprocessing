@@ -64,7 +64,13 @@ if __name__ == "__main__":
 
     # Use CO_CPUS env variable if available
     N_JOBS_CO = os.getenv("CO_CPUS")
-    N_JOBS = int(N_JOBS_CO) if N_JOBS_CO is not None else N_JOBS
+    if N_JOBS_CO is not None:
+        if isinstance(N_JOBS, float):
+            N_JOBS = int(N_JOBS * int(N_JOBS_CO))
+        elif N_JOBS == -1:
+            N_JOBS = int(N_JOBS_CO)
+        elif int(N_JOBS_CO) < N_JOBS:
+            N_JOBS = int(N_JOBS_CO)
 
     if PARAMS_FILE is not None:
         print(f"\nUsing custom parameter file: {PARAMS_FILE}")
