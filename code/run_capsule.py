@@ -72,6 +72,8 @@ if __name__ == "__main__":
         elif int(N_JOBS_CO) < N_JOBS:
             N_JOBS = int(N_JOBS_CO)
 
+    print(f"N_JOBS: {N_JOBS}")
+
     if PARAMS_FILE is not None:
         print(f"\nUsing custom parameter file: {PARAMS_FILE}")
         with open(PARAMS_FILE, "r") as f:
