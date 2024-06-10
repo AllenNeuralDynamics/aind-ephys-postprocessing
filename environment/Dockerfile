@@ -1,5 +1,6 @@
-# hash:sha256:5e4b88535b7b4c1c39cf698961f5e2eb7304d65ed4132e211233f54066d03435
-FROM registry.codeocean.allenneuraldynamics.org/codeocean/jupyterlab:3.6.1-miniconda4.12.0-python3.9-ubuntu20.04
+# hash:sha256:535454d82feb6f093673b9e04ed287311b6fc20d25249fd81da62ffb1f0cf27c
+ARG REGISTRY_HOST
+FROM $REGISTRY_HOST/codeocean/jupyterlab:3.6.1-miniconda4.12.0-python3.9-ubuntu20.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG AWS_ACCESS_KEY_ID
@@ -12,4 +13,4 @@ COPY git-askpass /
 
 RUN pip install -U --no-cache-dir \
     aind-data-schema==0.19.1 \
-    spikeinterface[full]==0.100.0
+    spikeinterface[full]==0.100.7
