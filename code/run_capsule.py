@@ -156,6 +156,17 @@ if __name__ == "__main__":
             np.save(postprocessing_output_folder / "placeholder.npy", mock_array)
             continue
 
+        # remove units with less than "n_components" spikes
+        n_components = postprocessing_params["principal_components"]["n_components"]
+        num_spikes = sorting.count_num_spikes_per_unit()
+        selected_units = sorting.unit_ids[np.array(list(num_spikes.values())) >= n_components]
+        print(
+            f"\tNumber of original units: {len(sorting.unit_ids)} -- Number of units after minimum spikes: {len(selected_units)}"
+        )
+        n_too_few_spikes = int(len(sorting.unit_ids) - len(selected_units))
+        postprocessing_notes += f"\n- Removed {n_too_few_spikes} units with less than {n_components} spikes.\n"
+        sorting = sorting.select_units(selected_units)
+
         # first extract some raw waveforms in memory to deduplicate based on peak alignment
         print(f"\t\tExtracting raw waveforms for deduplication")
         wf_dedup_folder = tmp_folder / "postprocessed" / recording_name
