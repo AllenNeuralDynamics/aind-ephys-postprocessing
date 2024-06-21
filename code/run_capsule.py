@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 
 # SPIKEINTERFACE
 import spikeinterface as si
+import spikeinterface.preprocessing as spre
 import spikeinterface.postprocessing as spost
 import spikeinterface.qualitymetrics as sqm
 import spikeinterface.curation as sc
@@ -38,6 +39,14 @@ results_folder = Path("../results/")
 # Define argument parser
 parser = argparse.ArgumentParser(description="Postprocess ecephys data")
 
+use_motion_corrected_group = parser.add_mutually_exclusive_group()
+use_motion_corrected_help = (
+    "If True and motion corrected has been computed (and not applied), "
+    "it applies motion interpolation to the recording prior to postprocessing."
+)
+use_motion_corrected_group.add_argument("static_use_motion_corrected", nargs="?", default="false", help=use_motion_corrected_help)
+use_motion_corrected_group.add_argument("--use-motion-corrected", action="store_true", help=use_motion_corrected_help)
+
 n_jobs_group = parser.add_mutually_exclusive_group()
 n_jobs_help = (
     "Number of jobs to use for parallel processing. Default is -1 (all available cores). "
@@ -56,6 +65,7 @@ params_group.add_argument("--params-str", default=None, help="Optional json stri
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    USE_MOTION_CORRECTED = args.use_motion_corrected or args.static_use_motion_corrected == "true"
     N_JOBS = args.static_n_jobs or args.n_jobs
     N_JOBS = int(N_JOBS) if not N_JOBS.startswith("0.") else float(N_JOBS)
     PARAMS_FILE = args.static_params_file or args.params_file
@@ -125,6 +135,8 @@ if __name__ == "__main__":
         datetime_start_postprocessing = datetime.now()
         t_postprocessing_start = time.perf_counter()
         postprocessing_notes = ""
+        binary_json_file = preprocessed_folder / f"binary_{recording_name}.json"
+        motion_corrected_folder = preprocessed_folder / f"motion_{recording_name}"
 
         print(f"\tProcessing {recording_name}")
         postprocessing_output_process_json = results_folder / f"{data_process_prefix}_{recording_name}.json"
@@ -132,7 +144,11 @@ if __name__ == "__main__":
         postprocessing_sorting_output_folder = results_folder / f"postprocessed-sorting_{recording_name}"
 
         try:
-            recording = si.load_extractor(preprocessed_folder / f"preprocessed_{recording_name}")
+            if binary_json_file.is_file():
+                print(f"Loading recording from binary JSON")
+                recording = si.load_extractor(binary_json_file, base_folder=preprocessed_folder)
+            else:
+                recording = si.load_extractor(preprocessed_folder / f"preprocessed_{recording_name}")
         except ValueError as e:
             print(f"Spike sorting skipped on {recording_name}. Skipping postprocessing")
             # create an empty result file (needed for pipeline)
@@ -140,6 +156,32 @@ if __name__ == "__main__":
             mock_array = np.array([], dtype=bool)
             np.save(postprocessing_output_folder / "placeholder.npy", mock_array)
             continue
+
+        if USE_MOTION_CORRECTED and motion_corrected_folder is not None:
+            from spikeinterface.sortingcomponents.motion_interpolation import (
+                InterpolateMotionRecording,
+                interpolate_motion,
+            )
+
+            print("Correcting for motion prior to postprocessing")
+            if not isinstance(recording, InterpolateMotionRecording):
+                print("\tApplying motion interpolation")
+                motion_info = spre.load_motion_info(motion_corrected_folder)
+                interpolate_motion_kwargs = motion_info["parameters"]["interpolate_motion_kwargs"]
+                recording = interpolate_motion(
+                    recording,
+                    motion=motion_info["motion"],
+                    temporal_bins=motion_info["temporal_bins"],
+                    spatial_bins=motion_info["spatial_bins"],
+                    **interpolate_motion_kwargs
+                )
+                # InterpolateMotion is not compatible with times.
+                # Removing time info for postprocessing
+                for rec_segment in recording._recording_segments:
+                    if rec_segment.time_vector is not None:
+                        rec_segment.time_vector = None
+            else:
+                print("\tRecording is already interpolated")
 
         # make sure we have spikesorted output for the block-stream
         sorted_folder = spikesorted_folder / f"spikesorted_{recording_name}"
