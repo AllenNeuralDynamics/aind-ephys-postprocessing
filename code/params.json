@@ -17,15 +17,16 @@
             "seed": null
         },
         "noise_levels": {
-	    "num_chunks_per_segment": 20,
-	    "chunk_size": 10000,
-	    "seed": null
+            "num_chunks_per_segment": 20,
+            "chunk_size": 10000,
+            "seed": null
         },
         "waveforms": {
             "ms_before": 3.0,
             "ms_after": 4.0,
             "dtype": null
         },
+        "templates": {},
         "spike_amplitudes": {
             "peak_sign": "neg"
         },

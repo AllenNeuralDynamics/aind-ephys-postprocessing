@@ -196,14 +196,9 @@ if __name__ == "__main__":
             folder=postprocessing_output_folder
         )
 
-        # now re-organize entries and postprocess
-        analyzer_dict_sorted = {}
-        analyzer_dict_sorted["waveforms"] = analyzer_dict.pop("waveforms")
-        analyzer_dict_sorted["templates"] = {}
-        analyzer_dict_sorted.update(analyzer_dict)
-
+        # now compute all extensions
         print(f"\tComputing all postprocessing extensions")
-        sorting_analyzer.compute(analyzer_dict_sorted)
+        sorting_analyzer.compute(analyzer_dict)
 
         print("\tComputing quality metrics")
         qm = sorting_analyzer.compute(
