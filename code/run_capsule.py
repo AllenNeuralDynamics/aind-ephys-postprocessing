@@ -163,21 +163,20 @@ if __name__ == "__main__":
             continue
 
         if USE_MOTION_CORRECTED and motion_corrected_folder is not None:
-            from spikeinterface.sortingcomponents.motion_interpolation import (
+            from spikeinterface.sortingcomponents.motion import (
                 InterpolateMotionRecording,
                 interpolate_motion,
             )
 
-            print("Correcting for motion prior to postprocessing")
+            print("\tCorrecting for motion prior to postprocessing")
             if not isinstance(recording, InterpolateMotionRecording):
-                print("\tApplying motion interpolation")
+                print("\t\tApplying motion interpolation")
                 motion_info = spre.load_motion_info(motion_corrected_folder)
                 interpolate_motion_kwargs = motion_info["parameters"]["interpolate_motion_kwargs"]
+                recording_f = spre.astype(recording, "float32")
                 recording = interpolate_motion(
-                    recording,
+                    recording_f,
                     motion=motion_info["motion"],
-                    temporal_bins=motion_info["temporal_bins"],
-                    spatial_bins=motion_info["spatial_bins"],
                     **interpolate_motion_kwargs
                 )
                 # InterpolateMotion is not compatible with times.
@@ -203,7 +202,7 @@ if __name__ == "__main__":
             np.save(postprocessing_output_folder / "placeholder.npy", mock_array)
             continue
 
-        print(f"\t\tCreating sorting analyzer")
+        print(f"\tCreating sorting analyzer")
         sorting_analyzer_full = si.create_sorting_analyzer(
             sorting=sorting,
             recording=recording,
