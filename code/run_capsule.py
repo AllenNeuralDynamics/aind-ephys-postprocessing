@@ -52,8 +52,8 @@ n_jobs_help = (
     "Number of jobs to use for parallel processing. Default is 0.8 (all available cores). "
     "It can also be a float between 0 and 1 to use a fraction of available cores"
 )
-n_jobs_group.add_argument("static_n_jobs", nargs="?", default="0.8", help=n_jobs_help)
-n_jobs_group.add_argument("--n-jobs", default="0.8", help=n_jobs_help)
+n_jobs_group.add_argument("static_n_jobs", nargs="?", default="-1", help=n_jobs_help)
+n_jobs_group.add_argument("--n-jobs", default="-1", help=n_jobs_help)
 
 params_group = parser.add_mutually_exclusive_group()
 params_file_help = "Optional json file with parameters"
@@ -150,7 +150,7 @@ if __name__ == "__main__":
 
         try:
             if binary_json_file.is_file():
-                print(f"Loading recording from binary JSON")
+                print(f"\tLoading recording from binary JSON")
                 recording = si.load_extractor(binary_json_file, base_folder=preprocessed_folder)
             else:
                 recording = si.load_extractor(preprocessed_folder / f"preprocessed_{recording_name}")
