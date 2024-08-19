@@ -145,8 +145,7 @@ if __name__ == "__main__":
 
         print(f"\tProcessing {recording_name}")
         postprocessing_output_process_json = results_folder / f"{data_process_prefix}_{recording_name}.json"
-        postprocessing_output_folder = results_folder / f"postprocessed_{recording_name}"
-        postprocessing_sorting_output_folder = results_folder / f"postprocessed-sorting_{recording_name}"
+        postprocessing_output_folder = results_folder / f"postprocessed_{recording_name}.zarr"
 
         try:
             if binary_json_file.is_file():
@@ -233,7 +232,7 @@ if __name__ == "__main__":
 
         # save
         sorting_analyzer = sorting_analyzer.save_as(
-            format="binary_folder",
+            format="zarr",
             folder=postprocessing_output_folder
         )
 
