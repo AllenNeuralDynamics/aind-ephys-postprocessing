@@ -151,7 +151,7 @@ if __name__ == "__main__":
         try:
             recording_bin = None
             if binary_json_file.is_file():
-                print(f"\tLoading recording from binary JSON")
+                print(f"\tLoading binary recording from JSON")
                 recording_bin = si.load_extractor(binary_json_file, base_folder=preprocessed_folder)
             else:
                 recording_bin = si.load_extractor(preprocessed_folder / f"preprocessed_{recording_name}")
@@ -237,8 +237,7 @@ if __name__ == "__main__":
         analyzer_dict = postprocessing_params.copy()
         analyzer_dict.pop("duplicate_threshold")
         analyzer_dict.pop("return_scaled")
-        random_spikes_params = analyzer_dict.pop("random_spikes")
-        sorting_analyzer_full.compute("random_spikes", **random_spikes_params)
+        sorting_analyzer_full.compute("random_spikes", **analyzer_dict["random_spikes"])
         sorting_analyzer_full.compute("templates")
         # de-duplication
         sorting_deduplicated = sc.remove_redundant_units(
@@ -261,7 +260,7 @@ if __name__ == "__main__":
             recording_tmp = None
 
         sorting_analyzer = si.create_sorting_analyzer(
-            sorting=sorting,
+            sorting=sorting_deduplicated,
             recording=recording,
             sparse=True,
             return_scaled=postprocessing_params["return_scaled"],
