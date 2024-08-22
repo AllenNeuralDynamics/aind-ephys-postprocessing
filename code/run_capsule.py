@@ -141,6 +141,7 @@ if __name__ == "__main__":
         t_postprocessing_start = time.perf_counter()
         postprocessing_notes = ""
         binary_json_file = preprocessed_folder / f"binary_{recording_name}.json"
+        preprocessed_json_file = preprocessed_folder / f"preprocessed_{recording_name}.json"
         motion_corrected_folder = preprocessed_folder / f"motion_{recording_name}"
 
         print(f"\tProcessing {recording_name}")
@@ -148,11 +149,19 @@ if __name__ == "__main__":
         postprocessing_output_folder = results_folder / f"postprocessed_{recording_name}.zarr"
 
         try:
+            recording_bin = None
             if binary_json_file.is_file():
                 print(f"\tLoading recording from binary JSON")
-                recording = si.load_extractor(binary_json_file, base_folder=preprocessed_folder)
+                recording_bin = si.load_extractor(binary_json_file, base_folder=preprocessed_folder)
             else:
-                recording = si.load_extractor(preprocessed_folder / f"preprocessed_{recording_name}")
+                recording_bin = si.load_extractor(preprocessed_folder / f"preprocessed_{recording_name}")
+            recording_lazy = None
+            try:
+                if preprocessed_json_file.is_file():
+                    print(f"\tLoading lazy recording from JSON")
+                    recording_lazy = si.load_extractor(preprocessed_json_file, base_folder=preprocessed_folder)
+            except:
+                print("Could not load lazy preprocessed recording")
         except ValueError as e:
             print(f"Spike sorting skipped on {recording_name}. Skipping postprocessing")
             # create an empty result file (needed for pipeline)
@@ -172,17 +181,31 @@ if __name__ == "__main__":
                 print("\t\tApplying motion interpolation")
                 motion_info = spre.load_motion_info(motion_corrected_folder)
                 interpolate_motion_kwargs = motion_info["parameters"]["interpolate_motion_kwargs"]
-                recording_f = spre.astype(recording, "float32")
-                recording = interpolate_motion(
-                    recording_f,
+                recording_bin_f = spre.astype(recording_bin, "float32")
+
+                recording_bin = interpolate_motion(
+                    recording_bin_f,
                     motion=motion_info["motion"],
                     **interpolate_motion_kwargs
                 )
                 # InterpolateMotion is not compatible with times.
                 # Removing time info for postprocessing
-                for rec_segment in recording._recording_segments:
+                for rec_segment in recording_bin._recording_segments:
                     if rec_segment.time_vector is not None:
                         rec_segment.time_vector = None
+
+                if recording_lazy is not None:
+                    recording_lazy_f = spre.astype(recording_bin, "float32")
+                    recording_lazy = interpolate_motion(
+                        recording_lazy_f,
+                        motion=motion_info["motion"],
+                        **interpolate_motion_kwargs
+                    )
+                    # InterpolateMotion is not compatible with times.
+                    # Removing time info for postprocessing
+                    for rec_segment in recording_lazy._recording_segments:
+                        if rec_segment.time_vector is not None:
+                            rec_segment.time_vector = None
             else:
                 print("\tRecording is already interpolated")
 
@@ -204,7 +227,7 @@ if __name__ == "__main__":
         print(f"\tCreating sorting analyzer")
         sorting_analyzer_full = si.create_sorting_analyzer(
             sorting=sorting,
-            recording=recording,
+            recording=recording_bin,
             sparse=True,
             return_scaled=postprocessing_params["return_scaled"],
             **sparsity_params
@@ -228,7 +251,26 @@ if __name__ == "__main__":
         postprocessing_notes += f"\n- Removed {n_duplicated} duplicated units.\n"
         deduplicated_unit_ids = sorting_deduplicated.unit_ids
 
-        sorting_analyzer = sorting_analyzer_full.select_units(sorting_deduplicated.unit_ids)
+        sorting_analyzer_dedup = sorting_analyzer_full.select_units(sorting_deduplicated.unit_ids)
+
+        if recording_lazy is not None:
+            recording = recording_lazy
+            recording_tmp = recording_bin
+        else:
+            recording = recording_bin
+            recording_tmp = None
+
+        sorting_analyzer = si.create_sorting_analyzer(
+            sorting=sorting,
+            recording=recording,
+            sparse=True,
+            return_scaled=postprocessing_params["return_scaled"],
+            sparsity=sorting_analyzer_dedup.sparsity
+        )
+
+        if recording_tmp is not None:
+            print(f"\tSetting temporary binary recording")
+            sorting_analyzer.set_temporary_recording(recording_tmp)
 
         # save
         sorting_analyzer = sorting_analyzer.save_as(
