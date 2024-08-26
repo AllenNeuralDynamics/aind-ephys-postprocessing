@@ -151,15 +151,15 @@ if __name__ == "__main__":
         try:
             recording_bin = None
             if binary_json_file.is_file():
-                print(f"\tLoading binary recording from JSON")
                 recording_bin = si.load_extractor(binary_json_file, base_folder=preprocessed_folder)
+                print(f"\tLoaded binary recording from JSON")
             else:
                 recording_bin = si.load_extractor(preprocessed_folder / f"preprocessed_{recording_name}")
             recording_lazy = None
             try:
                 if preprocessed_json_file.is_file():
                     print(f"\tLoading lazy recording from JSON")
-                    recording_lazy = si.load_extractor(preprocessed_json_file, base_folder=preprocessed_folder)
+                    recording_lazy = si.load_extractor(preprocessed_json_file, base_folder=data_folder)
             except:
                 print("Could not load lazy preprocessed recording")
         except ValueError as e:
