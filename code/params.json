@@ -9,38 +9,35 @@
     },
     "postprocessing": {
         "duplicate_threshold": 0.9,
-        "waveforms_deduplicate": {
-            "ms_before": 0.5,
-            "ms_after": 1.5,
-            "max_spikes_per_unit": 100,
-            "return_scaled": false,
-            "dtype": null,
-            "sparse": false,
-            "precompute_template": ["average"],
-            "use_relative_path": true
+	    "return_scaled": true,
+        "random_spikes": {
+            "max_spikes_per_unit": 500,
+            "method": "uniform",
+            "margin_size": null,
+            "seed": null
+        },
+        "noise_levels": {
+            "num_chunks_per_segment": 20,
+            "chunk_size": 10000,
+            "seed": null
         },
         "waveforms": {
             "ms_before": 3.0,
             "ms_after": 4.0,
-            "max_spikes_per_unit": 500,
-            "return_scaled": true,
-            "dtype": null,
-            "precompute_template": ["average", "std"],
-            "use_relative_path": true
+            "dtype": null
         },
+        "templates": {},
         "spike_amplitudes": {
-            "peak_sign": "neg",
-            "return_scaled": true,
-            "outputs": "concatenated"
+            "peak_sign": "neg"
         },
-        "similarity": {
+        "template_similarity": {
             "method": "cosine_similarity"
         },
         "correlograms": {
             "window_ms": 50.0,
             "bin_ms": 1.0
         },
-        "isis": {
+        "isi_histograms": {
             "window_ms": 100.0,
             "bin_ms": 5.0
         },
@@ -87,8 +84,7 @@
         },
         "snr": {
             "peak_sign": "neg", 
-            "peak_mode": "extremum", 
-            "random_chunk_kwargs_dict": null
+            "peak_mode": "extremum"
         },
         "isi_violation": {
             "isi_threshold_ms": 1.5, 

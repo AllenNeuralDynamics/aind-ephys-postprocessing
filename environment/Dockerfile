@@ -1,4 +1,4 @@
-# hash:sha256:c9c40530acd06143dbfba4fb66c090a867d4e385f396a96e1a1d5b862343203a
+# hash:sha256:16f2b9a38d6414358a64dfb812a0e7c3cbe45cb100e7c86ada9b7dc131435043
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/jupyterlab:3.6.1-miniconda4.12.0-python3.9-ubuntu20.04
 
@@ -12,5 +12,6 @@ ARG GIT_ACCESS_TOKEN
 COPY git-askpass /
 
 RUN pip install -U --no-cache-dir \
-    aind-data-schema==0.38.0 \
-    spikeinterface[full]==0.100.7
+    aind-data-schema==1.0.0 \
+    spikeinterface[full]==0.101.1 \
+    wavpack-numcodecs==0.1.5
