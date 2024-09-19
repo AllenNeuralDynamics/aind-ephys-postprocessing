@@ -271,12 +271,6 @@ if __name__ == "__main__":
             print(f"\tSetting temporary binary recording")
             sorting_analyzer.set_temporary_recording(recording_tmp)
 
-        # save
-        sorting_analyzer = sorting_analyzer.save_as(
-            format="zarr",
-            folder=postprocessing_output_folder
-        )
-
         # now compute all extensions
         print(f"\tComputing all postprocessing extensions")
         sorting_analyzer.compute(analyzer_dict)
@@ -286,6 +280,12 @@ if __name__ == "__main__":
             "quality_metrics",
             metric_names=quality_metrics_names,
             qm_params=quality_metrics_params
+        )
+
+        # save
+        sorting_analyzer = sorting_analyzer.save_as(
+            format="zarr",
+            folder=postprocessing_output_folder
         )
 
         t_postprocessing_end = time.perf_counter()
