@@ -283,6 +283,7 @@ if __name__ == "__main__":
         )
 
         # save
+        print("\tSaving SortingAnalyzer to zarr")
         sorting_analyzer = sorting_analyzer.save_as(
             format="zarr",
             folder=postprocessing_output_folder
