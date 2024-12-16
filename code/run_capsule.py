@@ -15,6 +15,7 @@ import shutil
 import json
 import argparse
 import time
+import logging
 from datetime import datetime, timedelta
 
 # SPIKEINTERFACE
@@ -88,10 +89,10 @@ if __name__ == "__main__":
         elif int(N_JOBS_CO) < N_JOBS:
             N_JOBS = int(N_JOBS_CO)
 
-    print(f"N_JOBS: {N_JOBS}")
+    logging.info(f"N_JOBS: {N_JOBS}")
 
     if PARAMS_FILE is not None:
-        print(f"\nUsing custom parameter file: {PARAMS_FILE}")
+        logging.info(f"\nUsing custom parameter file: {PARAMS_FILE}")
         with open(PARAMS_FILE, "r") as f:
             processing_params = json.load(f)
     elif PARAMS_STR is not None:
@@ -112,12 +113,12 @@ if __name__ == "__main__":
     quality_metrics_params = processing_params["quality_metrics"]
 
     ####### POSTPROCESSING ########
-    print("\nPOSTPROCESSING")
+    logging.info("\nPOSTPROCESSING")
     t_postprocessing_start_all = time.perf_counter()
 
     # check if test
     if (data_folder / "preprocessing_pipeline_output_test").is_dir():
-        print("\n*******************\n**** TEST MODE ****\n*******************\n")
+        logging.info("\n*******************\n**** TEST MODE ****\n*******************\n")
         preprocessed_folder = data_folder / "preprocessing_pipeline_output_test"
         spikesorted_folder = data_folder / "spikesorting_pipeline_output_test"
     else:
@@ -128,7 +129,7 @@ if __name__ == "__main__":
 
     # load job json files
     job_config_json_files = [p for p in data_folder.iterdir() if p.suffix == ".json" and "job" in p.name]
-    print(f"Found {len(job_config_json_files)} json configurations")
+    logging.info(f"Found {len(job_config_json_files)} json configurations")
 
     # copy all AIND metadata json files to results
     ecephys_session_folders = [
@@ -178,7 +179,7 @@ if __name__ == "__main__":
         preprocessed_json_file = preprocessed_folder / f"preprocessed_{recording_name}.json"
         motion_corrected_folder = preprocessed_folder / f"motion_{recording_name}"
 
-        print(f"\tProcessing {recording_name}")
+        logging.info(f"\tProcessing {recording_name}")
         postprocessing_output_process_json = results_folder / f"{data_process_prefix}_{recording_name}.json"
         postprocessing_output_folder = results_folder / f"postprocessed_{recording_name}.zarr"
 
@@ -186,18 +187,18 @@ if __name__ == "__main__":
             recording_bin = None
             if binary_json_file.is_file():
                 recording_bin = si.load_extractor(binary_json_file, base_folder=preprocessed_folder)
-                print(f"\tLoaded binary recording from JSON")
+                logging.info(f"\tLoaded binary recording from JSON")
             else:
                 recording_bin = si.load_extractor(preprocessed_folder / f"preprocessed_{recording_name}")
             recording_lazy = None
             try:
                 if preprocessed_json_file.is_file():
-                    print(f"\tLoading lazy recording from JSON")
+                    logging.info(f"\tLoading lazy recording from JSON")
                     recording_lazy = si.load_extractor(preprocessed_json_file, base_folder=data_folder)
             except:
-                print("Could not load lazy preprocessed recording")
+                logging.info("Could not load lazy preprocessed recording")
         except ValueError as e:
-            print(f"Spike sorting skipped on {recording_name}. Skipping postprocessing")
+            logging.info(f"Spike sorting skipped on {recording_name}. Skipping postprocessing")
             # create an empty result file (needed for pipeline)
             postprocessing_output_folder.mkdir()
             mock_array = np.array([], dtype=bool)
@@ -210,9 +211,9 @@ if __name__ == "__main__":
                 interpolate_motion,
             )
 
-            print("\tCorrecting for motion prior to postprocessing")
+            logging.info("\tCorrecting for motion prior to postprocessing")
             if not isinstance(recording, InterpolateMotionRecording):
-                print("\t\tApplying motion interpolation")
+                logging.info("\t\tApplying motion interpolation")
                 motion_info = spre.load_motion_info(motion_corrected_folder)
                 interpolate_motion_kwargs = motion_info["parameters"]["interpolate_motion_kwargs"]
                 recording_bin_f = spre.astype(recording_bin, "float32")
@@ -241,7 +242,7 @@ if __name__ == "__main__":
                         if rec_segment.time_vector is not None:
                             rec_segment.time_vector = None
             else:
-                print("\tRecording is already interpolated")
+                logging.info("\tRecording is already interpolated")
 
         # make sure we have spikesorted output for the block-stream
         sorted_folder = spikesorted_folder / f"spikesorted_{recording_name}"
@@ -251,14 +252,14 @@ if __name__ == "__main__":
         try:
             sorting = si.load_extractor(sorted_folder)
         except ValueError as e:
-            print(f"Spike sorting failed on {recording_name}. Skipping postprocessing")
+            logging.info(f"Spike sorting failed on {recording_name}. Skipping postprocessing")
             # create an empty result file (needed for pipeline)
             postprocessing_output_folder.mkdir()
             mock_array = np.array([], dtype=bool)
             np.save(postprocessing_output_folder / "placeholder.npy", mock_array)
             continue
 
-        print(f"\tCreating sorting analyzer")
+        logging.info(f"\tCreating sorting analyzer")
         sorting_analyzer_full = si.create_sorting_analyzer(
             sorting=sorting,
             recording=recording_bin,
@@ -277,7 +278,7 @@ if __name__ == "__main__":
         sorting_deduplicated = sc.remove_redundant_units(
             sorting_analyzer_full, duplicate_threshold=postprocessing_params["duplicate_threshold"]
         )
-        print(
+        logging.info(
             f"\tNumber of original units: {len(sorting.unit_ids)} -- Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}"
         )
         n_duplicated = int(len(sorting.unit_ids) - len(sorting_deduplicated.unit_ids))
@@ -302,14 +303,14 @@ if __name__ == "__main__":
         )
 
         if recording_tmp is not None:
-            print(f"\tSetting temporary binary recording")
+            logging.info(f"\tSetting temporary binary recording")
             sorting_analyzer.set_temporary_recording(recording_tmp)
 
         # now compute all extensions
-        print(f"\tComputing all postprocessing extensions")
+        logging.info(f"\tComputing all postprocessing extensions")
         sorting_analyzer.compute(analyzer_dict)
 
-        print("\tComputing quality metrics")
+        logging.info("\tComputing quality metrics")
         qm = sorting_analyzer.compute(
             "quality_metrics",
             metric_names=quality_metrics_names,
@@ -317,7 +318,7 @@ if __name__ == "__main__":
         )
 
         # save
-        print("\tSaving SortingAnalyzer to zarr")
+        logging.info("\tSaving SortingAnalyzer to zarr")
         sorting_analyzer = sorting_analyzer.save_as(
             format="zarr",
             folder=postprocessing_output_folder
@@ -353,4 +354,4 @@ if __name__ == "__main__":
 
     t_postprocessing_end_all = time.perf_counter()
     elapsed_time_postprocessing_all = np.round(t_postprocessing_end_all - t_postprocessing_start_all, 2)
-    print(f"POSTPROCESSING time: {elapsed_time_postprocessing_all}s")
+    logging.info(f"POSTPROCESSING time: {elapsed_time_postprocessing_all}s")
