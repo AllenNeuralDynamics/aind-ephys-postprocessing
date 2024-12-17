@@ -350,7 +350,7 @@ if __name__ == "__main__":
             metadata_json_files = [p for p in ecephys_session_folder.iterdir() if p.suffix == ".json"]
             for metadata_file in metadata_json_files:
                 if "data_description" in metadata_file.name or "subject" in metadata_file.name:
-                    shutil.copy(metadata_file, results_folder / f"{recording_name}_{metadata_file.name}")
+                    shutil.copy(metadata_file, results_folder / f"postprocessing_{recording_name}_{metadata_file.name}")
 
     t_postprocessing_end_all = time.perf_counter()
     elapsed_time_postprocessing_all = np.round(t_postprocessing_end_all - t_postprocessing_start_all, 2)
