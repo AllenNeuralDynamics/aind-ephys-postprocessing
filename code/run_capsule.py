@@ -9,6 +9,7 @@ import os
 # and let spikeinterface handle parallelization
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
+import sys
 import numpy as np
 from pathlib import Path
 import shutil
@@ -119,7 +120,7 @@ if __name__ == "__main__":
             aind_log_setup = True
 
     if not aind_log_setup:
-        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(message)s")
 
     logging.info(f"Running postprocessing with the following parameters:")
     logging.info(f"\tUSE_MOTION_CORRECTED: {USE_MOTION_CORRECTED}")
