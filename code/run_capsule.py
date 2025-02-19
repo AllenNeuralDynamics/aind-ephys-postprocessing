@@ -194,15 +194,15 @@ if __name__ == "__main__":
         try:
             recording_bin = None
             if binary_json_file.is_file():
-                recording_bin = si.load_extractor(binary_json_file, base_folder=preprocessed_folder)
+                recording_bin = si.load(binary_json_file, base_folder=preprocessed_folder)
                 logging.info(f"\tLoaded binary recording from JSON")
             else:
-                recording_bin = si.load_extractor(preprocessed_folder / f"preprocessed_{recording_name}")
+                recording_bin = si.load(preprocessed_folder / f"preprocessed_{recording_name}")
             recording_lazy = None
             try:
                 if preprocessed_json_file.is_file():
                     logging.info(f"\tLoading lazy recording from JSON")
-                    recording_lazy = si.load_extractor(preprocessed_json_file, base_folder=data_folder)
+                    recording_lazy = si.load(preprocessed_json_file, base_folder=data_folder)
             except:
                 logging.info("Could not load lazy preprocessed recording")
         except ValueError as e:
@@ -258,7 +258,7 @@ if __name__ == "__main__":
             raise FileNotFoundError(f"Spike sorted data for {recording_name} not found!")
 
         try:
-            sorting = si.load_extractor(sorted_folder)
+            sorting = si.load(sorted_folder)
         except ValueError as e:
             logging.info(f"Spike sorting failed on {recording_name}. Skipping postprocessing")
             # create an empty result file (needed for pipeline)
