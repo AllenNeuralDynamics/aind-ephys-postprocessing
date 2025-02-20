@@ -205,7 +205,7 @@ if __name__ == "__main__":
                     recording_lazy = si.load(preprocessed_json_file, base_folder=data_folder)
             except:
                 logging.info("Could not load lazy preprocessed recording")
-        except ValueError as e:
+        except Exception as e:
             logging.info(f"Spike sorting skipped on {recording_name}. Skipping postprocessing")
             # create an empty result file (needed for pipeline)
             postprocessing_output_folder.mkdir()
