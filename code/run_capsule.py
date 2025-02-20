@@ -259,7 +259,7 @@ if __name__ == "__main__":
 
         try:
             sorting = si.load(sorted_folder)
-        except ValueError as e:
+        except Exception as e:
             logging.info(f"Spike sorting failed on {recording_name}. Skipping postprocessing")
             # create an empty result file (needed for pipeline)
             postprocessing_output_folder.mkdir()
