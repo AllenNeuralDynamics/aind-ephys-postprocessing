@@ -138,7 +138,7 @@ if __name__ == "__main__":
 
     data_process_prefix = "data_process_postprocessing"
 
-    job_kwargs = postprocessing_params["job_kwargs"]
+    job_kwargs = postprocessing_params.pop("job_kwargs")
     job_kwargs["n_jobs"] = N_JOBS
     si.set_global_job_kwargs(**job_kwargs)
 
