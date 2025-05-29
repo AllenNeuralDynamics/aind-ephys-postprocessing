@@ -86,7 +86,7 @@ if __name__ == "__main__":
         USE_MOTION_CORRECTED = postprocessing_params.pop("use_motion_corrected", False)
     else:
         with open("params.json", "r") as f:
-            curation_params = json.load(f)
+            postprocessing_params = json.load(f)
         USE_MOTION_CORRECTED = args.use_motion_corrected or args.static_use_motion_corrected == "true"
         
 
