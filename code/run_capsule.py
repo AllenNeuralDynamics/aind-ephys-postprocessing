@@ -9,6 +9,7 @@ import os
 # and let spikeinterface handle parallelization
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
+import sys
 import numpy as np
 from pathlib import Path
 import shutil
@@ -63,21 +64,31 @@ n_jobs_help = (
 n_jobs_group.add_argument("static_n_jobs", nargs="?", default="-1", help=n_jobs_help)
 n_jobs_group.add_argument("--n-jobs", default="-1", help=n_jobs_help)
 
-params_group = parser.add_mutually_exclusive_group()
-params_file_help = "Optional json file with parameters"
-params_group.add_argument("static_params_file", nargs="?", default=None, help=params_file_help)
-params_group.add_argument("--params-file", default=None, help=params_file_help)
-params_group.add_argument("--params-str", default=None, help="Optional json string with parameters")
-
+parser.add_argument("--params", default=None, help="Path to the parameters file or JSON string. If given, it will override all other arguments.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    USE_MOTION_CORRECTED = args.use_motion_corrected or args.static_use_motion_corrected == "true"
     N_JOBS = args.static_n_jobs or args.n_jobs
     N_JOBS = int(N_JOBS) if not N_JOBS.startswith("0.") else float(N_JOBS)
-    PARAMS_FILE = args.static_params_file or args.params_file
-    PARAMS_STR = args.params_str
+    PARAMS = args.params
+
+    if PARAMS is not None:
+        try:
+            # try to parse the JSON string first to avoid file name too long error
+            postprocessing_params = json.loads(PARAMS)
+        except json.JSONDecodeError:
+            if Path(PARAMS).is_file():
+                with open(PARAMS, "r") as f:
+                    postprocessing_params = json.load(f)
+            else:
+                raise ValueError(f"Invalid parameters: {PARAMS} is not a valid JSON string or file path")
+        USE_MOTION_CORRECTED = postprocessing_params.pop("use_motion_corrected", False)
+    else:
+        with open("params.json", "r") as f:
+            postprocessing_params = json.load(f)
+        USE_MOTION_CORRECTED = args.use_motion_corrected or args.static_use_motion_corrected == "true"
+        
 
     # Use CO_CPUS/SLURM_JOB_CPUS_PER_NODE env variable if available
     N_JOBS_EXT = os.getenv("CO_CPUS") or os.getenv("SLURM_JOB_CPUS_PER_NODE")
@@ -112,39 +123,28 @@ if __name__ == "__main__":
                 session_name = data_description["name"]
 
             log.setup_logging(
-                "Preprocess Ecephys",
-                mouse_id=subject_id,
-                session_name=session_name,
+                "Postprocess Ecephys",
+                subject_id=subject_id,
+                asset_name=session_name,
             )
             aind_log_setup = True
 
     if not aind_log_setup:
-        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(message)s")
 
     logging.info(f"Running postprocessing with the following parameters:")
     logging.info(f"\tUSE_MOTION_CORRECTED: {USE_MOTION_CORRECTED}")
     logging.info(f"\tN_JOBS: {N_JOBS}")
 
-    if PARAMS_FILE is not None:
-        logging.info(f"\nUsing custom parameter file: {PARAMS_FILE}")
-        with open(PARAMS_FILE, "r") as f:
-            processing_params = json.load(f)
-    elif PARAMS_STR is not None:
-        processing_params = json.loads(PARAMS_STR)
-    else:
-        with open("params.json", "r") as f:
-            processing_params = json.load(f)
-
     data_process_prefix = "data_process_postprocessing"
 
-    job_kwargs = processing_params["job_kwargs"]
+    job_kwargs = postprocessing_params.pop("job_kwargs")
     job_kwargs["n_jobs"] = N_JOBS
     si.set_global_job_kwargs(**job_kwargs)
 
-    postprocessing_params = processing_params["postprocessing"]
-    sparsity_params = processing_params["sparsity"]
-    quality_metrics_names = processing_params["quality_metrics_names"]
-    quality_metrics_params = processing_params["quality_metrics"]
+    sparsity_params = postprocessing_params.pop("sparsity")
+    quality_metrics_names = postprocessing_params.pop("quality_metrics_names")
+    quality_metrics_params = postprocessing_params.pop("quality_metrics")
 
     ####### POSTPROCESSING ########
     logging.info("\nPOSTPROCESSING")
@@ -193,18 +193,18 @@ if __name__ == "__main__":
         try:
             recording_bin = None
             if binary_json_file.is_file():
-                recording_bin = si.load_extractor(binary_json_file, base_folder=preprocessed_folder)
+                recording_bin = si.load(binary_json_file, base_folder=preprocessed_folder)
                 logging.info(f"\tLoaded binary recording from JSON")
             else:
-                recording_bin = si.load_extractor(preprocessed_folder / f"preprocessed_{recording_name}")
+                recording_bin = si.load(preprocessed_folder / f"preprocessed_{recording_name}")
             recording_lazy = None
             try:
                 if preprocessed_json_file.is_file():
                     logging.info(f"\tLoading lazy recording from JSON")
-                    recording_lazy = si.load_extractor(preprocessed_json_file, base_folder=data_folder)
+                    recording_lazy = si.load(preprocessed_json_file, base_folder=data_folder)
             except:
                 logging.info("Could not load lazy preprocessed recording")
-        except ValueError as e:
+        except Exception as e:
             logging.info(f"Spike sorting skipped on {recording_name}. Skipping postprocessing")
             # create an empty result file (needed for pipeline)
             postprocessing_output_folder.mkdir()
@@ -257,8 +257,8 @@ if __name__ == "__main__":
             raise FileNotFoundError(f"Spike sorted data for {recording_name} not found!")
 
         try:
-            sorting = si.load_extractor(sorted_folder)
-        except ValueError as e:
+            sorting = si.load(sorted_folder)
+        except Exception as e:
             logging.info(f"Spike sorting failed on {recording_name}. Skipping postprocessing")
             # create an empty result file (needed for pipeline)
             postprocessing_output_folder.mkdir()
