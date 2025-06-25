@@ -30,7 +30,7 @@
         "peak_sign": "neg"
     },
     "template_similarity": {
-        "method": "cosine_similarity"
+        "method": "l1"
     },
     "correlograms": {
         "window_ms": 50.0,
