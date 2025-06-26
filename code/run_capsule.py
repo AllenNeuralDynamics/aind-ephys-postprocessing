@@ -315,7 +315,7 @@ if __name__ == "__main__":
 
         # now compute all extensions
         logging.info(f"\tComputing all postprocessing extensions")
-        sorting_analyzer.compute(analyzer_dict, verbose=True)
+        sorting_analyzer.compute(analyzer_dict)
 
         logging.info("\tComputing quality metrics")
         qm = sorting_analyzer.compute(
