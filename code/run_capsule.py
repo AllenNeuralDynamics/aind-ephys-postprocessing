@@ -315,8 +315,8 @@ if __name__ == "__main__":
         sorting_analyzer = si.create_sorting_analyzer(
             sorting=sorting_deduplicated,
             recording=recording,
-            # format="binary_folder",
-            # folder=scratch_folder / "tmp_analyzer",
+            format="binary_folder",
+            folder=scratch_folder / "tmp_analyzer",
             sparse=True,
             return_scaled=postprocessing_params["return_scaled"],
             sparsity=sorting_analyzer_dedup.sparsity
@@ -343,11 +343,10 @@ if __name__ == "__main__":
             format="zarr",
             folder=postprocessing_output_folder
         )
-        
-        # try:
-        #    shutil.rmtree(scratch_folder / "tmp_analyzer")
-        # except:
-        #    logging.info("Failed to delede temporary analyzer folder in scratch")
+        try:
+           shutil.rmtree(scratch_folder / "tmp_analyzer")
+        except:
+           logging.info("Failed to delede temporary analyzer folder in scratch")
 
         t_postprocessing_end = time.perf_counter()
         elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
