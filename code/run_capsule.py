@@ -9,12 +9,14 @@ import os
 # and let spikeinterface handle parallelization
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
+import sys
 import numpy as np
 from pathlib import Path
 import shutil
 import json
 import argparse
 import time
+import logging
 from datetime import datetime, timedelta
 
 # SPIKEINTERFACE
@@ -28,6 +30,13 @@ from spikeinterface.core.core_tools import check_json
 
 # AIND
 from aind_data_schema.core.processing import DataProcess
+
+try:
+    from aind_log_utils import log
+
+    HAVE_AIND_LOG_UTILS = True
+except ImportError:
+    HAVE_AIND_LOG_UTILS = False
 
 URL = "https://github.com/AllenNeuralDynamics/aind-ephys-postprocessing"
 VERSION = "1.0"
@@ -55,62 +64,104 @@ n_jobs_help = (
 n_jobs_group.add_argument("static_n_jobs", nargs="?", default="-1", help=n_jobs_help)
 n_jobs_group.add_argument("--n-jobs", default="-1", help=n_jobs_help)
 
-params_group = parser.add_mutually_exclusive_group()
-params_file_help = "Optional json file with parameters"
-params_group.add_argument("static_params_file", nargs="?", default=None, help=params_file_help)
-params_group.add_argument("--params-file", default=None, help=params_file_help)
-params_group.add_argument("--params-str", default=None, help="Optional json string with parameters")
-
+parser.add_argument("--params", default=None, help="Path to the parameters file or JSON string. If given, it will override all other arguments.")
 
 if __name__ == "__main__":
+
+    # Get the total size of the shared memory filesystem
+    shm_stat = os.statvfs('/dev/shm')
+    total_shm = shm_stat.f_frsize * shm_stat.f_blocks  # Total size in bytes
+    free_shm = shm_stat.f_frsize * shm_stat.f_bfree    # Free size in bytes
+
+    print(f"Total /dev/shm size: {total_shm / 1024**3:.2f} GB")
+    print(f"Free /dev/shm size: {free_shm / 1024**3:.2f} GB")
+
     args = parser.parse_args()
 
-    USE_MOTION_CORRECTED = args.use_motion_corrected or args.static_use_motion_corrected == "true"
     N_JOBS = args.static_n_jobs or args.n_jobs
     N_JOBS = int(N_JOBS) if not N_JOBS.startswith("0.") else float(N_JOBS)
-    PARAMS_FILE = args.static_params_file or args.params_file
-    PARAMS_STR = args.params_str
+    PARAMS = args.params
 
-    # Use CO_CPUS env variable if available
-    N_JOBS_CO = os.getenv("CO_CPUS")
-    if N_JOBS_CO is not None:
-        if isinstance(N_JOBS, float):
-            N_JOBS = int(N_JOBS * int(N_JOBS_CO))
-        elif N_JOBS == -1:
-            N_JOBS = int(N_JOBS_CO)
-        elif int(N_JOBS_CO) < N_JOBS:
-            N_JOBS = int(N_JOBS_CO)
-
-    print(f"N_JOBS: {N_JOBS}")
-
-    if PARAMS_FILE is not None:
-        print(f"\nUsing custom parameter file: {PARAMS_FILE}")
-        with open(PARAMS_FILE, "r") as f:
-            processing_params = json.load(f)
-    elif PARAMS_STR is not None:
-        processing_params = json.loads(PARAMS_STR)
+    if PARAMS is not None:
+        try:
+            # try to parse the JSON string first to avoid file name too long error
+            postprocessing_params = json.loads(PARAMS)
+        except json.JSONDecodeError:
+            if Path(PARAMS).is_file():
+                with open(PARAMS, "r") as f:
+                    postprocessing_params = json.load(f)
+            else:
+                raise ValueError(f"Invalid parameters: {PARAMS} is not a valid JSON string or file path")
+        USE_MOTION_CORRECTED = postprocessing_params.pop("use_motion_corrected", False)
     else:
         with open("params.json", "r") as f:
-            processing_params = json.load(f)
+            postprocessing_params = json.load(f)
+        USE_MOTION_CORRECTED = args.use_motion_corrected or args.static_use_motion_corrected == "true"
+        
+
+    # Use CO_CPUS/SLURM_CPUS_ON_NODE env variable if available
+    N_JOBS_EXT = os.getenv("CO_CPUS") or os.getenv("SLURM_CPUS_ON_NODE")
+    if N_JOBS_EXT is not None:
+        if isinstance(N_JOBS, float):
+            N_JOBS = int(N_JOBS * int(N_JOBS_EXT))
+        elif N_JOBS == -1:
+            N_JOBS = int(N_JOBS_EXT)
+        elif int(N_JOBS_EXT) < N_JOBS:
+            N_JOBS = int(N_JOBS_EXT)
+
+    # setup AIND logging before any other logging call
+    ecephys_session_folders = [
+        p for p in data_folder.iterdir() if "ecephys" in p.name.lower() or "behavior" in p.name.lower()
+    ]
+    ecephys_session_folder = None
+    aind_log_setup = False
+    if len(ecephys_session_folders) == 1:
+        ecephys_session_folder = ecephys_session_folders[0]
+        if HAVE_AIND_LOG_UTILS:
+            # look for subject.json and data_description.json files
+            subject_json = ecephys_session_folder / "subject.json"
+            subject_id = "undefined"
+            if subject_json.is_file():
+                subject_data = json.load(open(subject_json, "r"))
+                subject_id = subject_data["subject_id"]
+
+            data_description_json = ecephys_session_folder / "data_description.json"
+            session_name = "undefined"
+            if data_description_json.is_file():
+                data_description = json.load(open(data_description_json, "r"))
+                session_name = data_description["name"]
+
+            log.setup_logging(
+                "Postprocess Ecephys",
+                subject_id=subject_id,
+                asset_name=session_name,
+            )
+            aind_log_setup = True
+
+    if not aind_log_setup:
+        logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(message)s")
+
+    logging.info(f"Running postprocessing with the following parameters:")
+    logging.info(f"\tUSE_MOTION_CORRECTED: {USE_MOTION_CORRECTED}")
+    logging.info(f"\tN_JOBS: {N_JOBS}")
 
     data_process_prefix = "data_process_postprocessing"
 
-    job_kwargs = processing_params["job_kwargs"]
+    job_kwargs = postprocessing_params.pop("job_kwargs")
     job_kwargs["n_jobs"] = N_JOBS
     si.set_global_job_kwargs(**job_kwargs)
 
-    postprocessing_params = processing_params["postprocessing"]
-    sparsity_params = processing_params["sparsity"]
-    quality_metrics_names = processing_params["quality_metrics_names"]
-    quality_metrics_params = processing_params["quality_metrics"]
+    sparsity_params = postprocessing_params.pop("sparsity")
+    quality_metrics_names = postprocessing_params.pop("quality_metrics_names")
+    quality_metrics_params = postprocessing_params.pop("quality_metrics")
 
     ####### POSTPROCESSING ########
-    print("\nPOSTPROCESSING")
+    logging.info("\nPOSTPROCESSING")
     t_postprocessing_start_all = time.perf_counter()
 
     # check if test
     if (data_folder / "preprocessing_pipeline_output_test").is_dir():
-        print("\n*******************\n**** TEST MODE ****\n*******************\n")
+        logging.info("\n*******************\n**** TEST MODE ****\n*******************\n")
         preprocessed_folder = data_folder / "preprocessing_pipeline_output_test"
         spikesorted_folder = data_folder / "spikesorting_pipeline_output_test"
     else:
@@ -121,7 +172,7 @@ if __name__ == "__main__":
 
     # load job json files
     job_config_json_files = [p for p in data_folder.iterdir() if p.suffix == ".json" and "job" in p.name]
-    print(f"Found {len(job_config_json_files)} json configurations")
+    logging.info(f"Found {len(job_config_json_files)} json configurations")
 
     if len(job_config_json_files) > 0:
         recording_names = []
@@ -144,26 +195,26 @@ if __name__ == "__main__":
         preprocessed_json_file = preprocessed_folder / f"preprocessed_{recording_name}.json"
         motion_corrected_folder = preprocessed_folder / f"motion_{recording_name}"
 
-        print(f"\tProcessing {recording_name}")
+        logging.info(f"\tProcessing {recording_name}")
         postprocessing_output_process_json = results_folder / f"{data_process_prefix}_{recording_name}.json"
         postprocessing_output_folder = results_folder / f"postprocessed_{recording_name}.zarr"
 
         try:
             recording_bin = None
             if binary_json_file.is_file():
-                recording_bin = si.load_extractor(binary_json_file, base_folder=preprocessed_folder)
-                print(f"\tLoaded binary recording from JSON")
+                recording_bin = si.load(binary_json_file, base_folder=preprocessed_folder)
+                logging.info(f"\tLoaded binary recording from JSON")
             else:
-                recording_bin = si.load_extractor(preprocessed_folder / f"preprocessed_{recording_name}")
+                recording_bin = si.load(preprocessed_folder / f"preprocessed_{recording_name}")
             recording_lazy = None
             try:
                 if preprocessed_json_file.is_file():
-                    print(f"\tLoading lazy recording from JSON")
-                    recording_lazy = si.load_extractor(preprocessed_json_file, base_folder=data_folder)
+                    logging.info(f"\tLoading lazy recording from JSON")
+                    recording_lazy = si.load(preprocessed_json_file, base_folder=data_folder)
             except:
-                print("Could not load lazy preprocessed recording")
-        except ValueError as e:
-            print(f"Spike sorting skipped on {recording_name}. Skipping postprocessing")
+                logging.info("Could not load lazy preprocessed recording")
+        except Exception as e:
+            logging.info(f"Spike sorting skipped on {recording_name}. Skipping postprocessing")
             # create an empty result file (needed for pipeline)
             postprocessing_output_folder.mkdir()
             mock_array = np.array([], dtype=bool)
@@ -176,9 +227,9 @@ if __name__ == "__main__":
                 interpolate_motion,
             )
 
-            print("\tCorrecting for motion prior to postprocessing")
+            logging.info("\tCorrecting for motion prior to postprocessing")
             if not isinstance(recording, InterpolateMotionRecording):
-                print("\t\tApplying motion interpolation")
+                logging.info("\t\tApplying motion interpolation")
                 motion_info = spre.load_motion_info(motion_corrected_folder)
                 interpolate_motion_kwargs = motion_info["parameters"]["interpolate_motion_kwargs"]
                 recording_bin_f = spre.astype(recording_bin, "float32")
@@ -207,7 +258,7 @@ if __name__ == "__main__":
                         if rec_segment.time_vector is not None:
                             rec_segment.time_vector = None
             else:
-                print("\tRecording is already interpolated")
+                logging.info("\tRecording is already interpolated")
 
         # make sure we have spikesorted output for the block-stream
         sorted_folder = spikesorted_folder / f"spikesorted_{recording_name}"
@@ -215,16 +266,16 @@ if __name__ == "__main__":
             raise FileNotFoundError(f"Spike sorted data for {recording_name} not found!")
 
         try:
-            sorting = si.load_extractor(sorted_folder)
-        except ValueError as e:
-            print(f"Spike sorting failed on {recording_name}. Skipping postprocessing")
+            sorting = si.load(sorted_folder)
+        except Exception as e:
+            logging.info(f"Spike sorting failed on {recording_name}. Skipping postprocessing")
             # create an empty result file (needed for pipeline)
             postprocessing_output_folder.mkdir()
             mock_array = np.array([], dtype=bool)
             np.save(postprocessing_output_folder / "placeholder.npy", mock_array)
             continue
 
-        print(f"\tCreating sorting analyzer")
+        logging.info(f"\tCreating sorting analyzer")
         sorting_analyzer_full = si.create_sorting_analyzer(
             sorting=sorting,
             recording=recording_bin,
@@ -243,7 +294,7 @@ if __name__ == "__main__":
         sorting_deduplicated = sc.remove_redundant_units(
             sorting_analyzer_full, duplicate_threshold=postprocessing_params["duplicate_threshold"]
         )
-        print(
+        logging.info(
             f"\tNumber of original units: {len(sorting.unit_ids)} -- Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}"
         )
         n_duplicated = int(len(sorting.unit_ids) - len(sorting_deduplicated.unit_ids))
@@ -259,35 +310,43 @@ if __name__ == "__main__":
             recording = recording_bin
             recording_tmp = None
 
+        # create a sorting analyzer in binary_folder in scratch
+        # this prevents issues with shared memory sizes
         sorting_analyzer = si.create_sorting_analyzer(
             sorting=sorting_deduplicated,
             recording=recording,
+            format="binary_folder",
+            folder=scratch_folder / "tmp_analyzer",
             sparse=True,
             return_scaled=postprocessing_params["return_scaled"],
             sparsity=sorting_analyzer_dedup.sparsity
         )
 
         if recording_tmp is not None:
-            print(f"\tSetting temporary binary recording")
+            logging.info(f"\tSetting temporary binary recording")
             sorting_analyzer.set_temporary_recording(recording_tmp)
 
         # now compute all extensions
-        print(f"\tComputing all postprocessing extensions")
+        logging.info("\tComputing all postprocessing extensions")
         sorting_analyzer.compute(analyzer_dict)
-
-        print("\tComputing quality metrics")
+            
+        logging.info("\tComputing quality metrics")
         qm = sorting_analyzer.compute(
             "quality_metrics",
             metric_names=quality_metrics_names,
             qm_params=quality_metrics_params
         )
 
-        # save
-        print("\tSaving SortingAnalyzer to zarr")
+        # save as zarr and delete tmp_analyzer
+        logging.info("\tSaving SortingAnalyzer to zarr")
         sorting_analyzer = sorting_analyzer.save_as(
             format="zarr",
             folder=postprocessing_output_folder
         )
+        try:
+           shutil.rmtree(scratch_folder / "tmp_analyzer")
+        except:
+           logging.info("Failed to delede temporary analyzer folder in scratch")
 
         t_postprocessing_end = time.perf_counter()
         elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
@@ -310,6 +369,13 @@ if __name__ == "__main__":
         with open(postprocessing_output_process_json, "w") as f:
             f.write(postprocessing_process.model_dump_json(indent=3))
 
+        # copy data_description and subject json
+        if ecephys_session_folder is not None:
+            metadata_json_files = [p for p in ecephys_session_folder.iterdir() if p.suffix == ".json"]
+            for metadata_file in metadata_json_files:
+                if "data_description" in metadata_file.name or "subject" in metadata_file.name:
+                    shutil.copy(metadata_file, results_folder / f"postprocessing_{recording_name}_{metadata_file.name}")
+
     t_postprocessing_end_all = time.perf_counter()
     elapsed_time_postprocessing_all = np.round(t_postprocessing_end_all - t_postprocessing_start_all, 2)
-    print(f"POSTPROCESSING time: {elapsed_time_postprocessing_all}s")
+    logging.info(f"POSTPROCESSING time: {elapsed_time_postprocessing_all}s")
