@@ -1,20 +1,27 @@
 import warnings
+
 warnings.filterwarnings("ignore")
 
 # GENERAL IMPORTS
 import os
-os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
+# this is needed to limit the number of scipy threads
+# and let spikeinterface handle parallelization
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+
+import sys
 import numpy as np
 from pathlib import Path
 import shutil
 import json
-import sys
+import argparse
 import time
+import logging
 from datetime import datetime, timedelta
 
 # SPIKEINTERFACE
 import spikeinterface as si
+import spikeinterface.preprocessing as spre
 import spikeinterface.postprocessing as spost
 import spikeinterface.qualitymetrics as sqm
 import spikeinterface.curation as sc
@@ -22,134 +29,139 @@ import spikeinterface.curation as sc
 from spikeinterface.core.core_tools import check_json
 
 # AIND
-from aind_data_schema import Processing
-from aind_data_schema.processing import DataProcess
+from aind_data_schema.core.processing import DataProcess
 
+try:
+    from aind_log_utils import log
 
-URL = "https://github.com/AllenNeuralDynamics/aind-capsule-ephys-postprocessing"
-VERSION = "0.1.0"
+    HAVE_AIND_LOG_UTILS = True
+except ImportError:
+    HAVE_AIND_LOG_UTILS = False
 
-
-sparsity_params=dict(
-    method="radius",
-    radius_um=100
-)
-
-qm_params = {
-    'presence_ratio': {'bin_duration_s': 60},
-    'snr':  {
-        'peak_sign': 'neg',
-        'peak_mode': 'extremum',
-        'random_chunk_kwargs_dict': None
-    },
-    'isi_violation': {
-        'isi_threshold_ms': 1.5, 'min_isi_ms': 0
-    },
-    'rp_violation': {
-        'refractory_period_ms': 1, 'censored_period_ms': 0.0
-    },
-    'sliding_rp_violation': {
-        'bin_size_ms': 0.25,
-        'window_size_s': 1,
-        'exclude_ref_period_below_ms': 0.5,
-        'max_ref_period_ms': 10,
-        'contamination_values': None
-    },
-    'amplitude_cutoff': {
-        'peak_sign': 'neg',
-        'num_histogram_bins': 100,
-        'histogram_smoothing_value': 3,
-        'amplitudes_bins_min_ratio': 5
-    },
-    'amplitude_median': {
-        'peak_sign': 'neg'
-    },
-    'nearest_neighbor': {
-        'max_spikes': 10000, 'min_spikes': 10, 'n_neighbors': 4
-    },
-    'nn_isolation': {
-        'max_spikes': 10000,
-        'min_spikes': 10,
-        'n_neighbors': 4,
-        'n_components': 10,
-        'radius_um': 100
-    },
-    'nn_noise_overlap': {
-        'max_spikes': 10000,
-        'min_spikes': 10,
-        'n_neighbors': 4,
-        'n_components': 10,
-        'radius_um': 100
-    }
-}
-qm_metric_names = ['num_spikes', 'firing_rate', 'presence_ratio', 'snr',
-                   'isi_violation', 'rp_violation', 'sliding_rp_violation',
-                   'amplitude_cutoff', 'drift', 'isolation_distance',
-                   'l_ratio', 'd_prime']
-
-postprocessing_params = dict(
-    duplicate_threshold=0.9,
-    sparsity=sparsity_params,
-    waveforms_deduplicate=dict(ms_before=0.5,
-                               ms_after=1.5,
-                               max_spikes_per_unit=100,
-                               return_scaled=False,
-                               dtype=None,
-                               precompute_template=('average', ),
-                               use_relative_path=True,),
-    waveforms=dict(ms_before=3.0,
-                   ms_after=4.0,
-                   max_spikes_per_unit=500,
-                   return_scaled=True,
-                   dtype=None,
-                   precompute_template=('average', 'std'),
-                   use_relative_path=True,),
-    spike_amplitudes=dict(peak_sign='neg',
-                          return_scaled=True,
-                          outputs='concatenated',),
-    similarity=dict(method="cosine_similarity"),
-    correlograms=dict(window_ms=100.0,
-                      bin_ms=2.0,),
-    isis=dict(window_ms=100.0,
-              bin_ms=5.0,),
-    locations=dict(method="monopolar_triangulation"),
-    template_metrics=dict(upsampling_factor=10, sparsity=None),
-    principal_components=dict(n_components=5,
-                              mode='by_channel_local',
-                              whiten=True),
-    quality_metrics=dict(qm_params=qm_params, metric_names=qm_metric_names, n_jobs=1),
-)
-
-
-n_jobs_co = os.getenv('CO_CPUS')
-n_jobs = int(n_jobs_co) if n_jobs_co is not None else -1
-
-job_kwargs = {
-    'n_jobs': n_jobs,
-    'chunk_duration': '1s',
-    'progress_bar': True
-}
+URL = "https://github.com/AllenNeuralDynamics/aind-ephys-postprocessing"
+VERSION = "1.0"
 
 data_folder = Path("../data/")
-scratc_folder = Path("../scratch")
+scratch_folder = Path("../scratch")
 results_folder = Path("../results/")
 
-tmp_folder = results_folder / "tmp"
-tmp_folder.mkdir()
+# Define argument parser
+parser = argparse.ArgumentParser(description="Postprocess ecephys data")
 
+use_motion_corrected_group = parser.add_mutually_exclusive_group()
+use_motion_corrected_help = (
+    "If True and motion corrected has been computed (and not applied), "
+    "it applies motion interpolation to the recording prior to postprocessing."
+)
+use_motion_corrected_group.add_argument("static_use_motion_corrected", nargs="?", default="false", help=use_motion_corrected_help)
+use_motion_corrected_group.add_argument("--use-motion-corrected", action="store_true", help=use_motion_corrected_help)
+
+n_jobs_group = parser.add_mutually_exclusive_group()
+n_jobs_help = (
+    "Number of jobs to use for parallel processing. Default is 0.8 (all available cores). "
+    "It can also be a float between 0 and 1 to use a fraction of available cores"
+)
+n_jobs_group.add_argument("static_n_jobs", nargs="?", default="-1", help=n_jobs_help)
+n_jobs_group.add_argument("--n-jobs", default="-1", help=n_jobs_help)
+
+parser.add_argument("--params", default=None, help="Path to the parameters file or JSON string. If given, it will override all other arguments.")
 
 if __name__ == "__main__":
+
+    # Get the total size of the shared memory filesystem
+    shm_stat = os.statvfs('/dev/shm')
+    total_shm = shm_stat.f_frsize * shm_stat.f_blocks  # Total size in bytes
+    free_shm = shm_stat.f_frsize * shm_stat.f_bfree    # Free size in bytes
+
+    print(f"Total /dev/shm size: {total_shm / 1024**3:.2f} GB")
+    print(f"Free /dev/shm size: {free_shm / 1024**3:.2f} GB")
+
+    args = parser.parse_args()
+
+    N_JOBS = args.static_n_jobs or args.n_jobs
+    N_JOBS = int(N_JOBS) if not N_JOBS.startswith("0.") else float(N_JOBS)
+    PARAMS = args.params
+
+    if PARAMS is not None:
+        try:
+            # try to parse the JSON string first to avoid file name too long error
+            postprocessing_params = json.loads(PARAMS)
+        except json.JSONDecodeError:
+            if Path(PARAMS).is_file():
+                with open(PARAMS, "r") as f:
+                    postprocessing_params = json.load(f)
+            else:
+                raise ValueError(f"Invalid parameters: {PARAMS} is not a valid JSON string or file path")
+        USE_MOTION_CORRECTED = postprocessing_params.pop("use_motion_corrected", False)
+    else:
+        with open("params.json", "r") as f:
+            postprocessing_params = json.load(f)
+        USE_MOTION_CORRECTED = args.use_motion_corrected or args.static_use_motion_corrected == "true"
+        
+
+    # Use CO_CPUS/SLURM_CPUS_ON_NODE env variable if available
+    N_JOBS_EXT = os.getenv("CO_CPUS") or os.getenv("SLURM_CPUS_ON_NODE")
+    if N_JOBS_EXT is not None:
+        if isinstance(N_JOBS, float):
+            N_JOBS = int(N_JOBS * int(N_JOBS_EXT))
+        elif N_JOBS == -1:
+            N_JOBS = int(N_JOBS_EXT)
+        elif int(N_JOBS_EXT) < N_JOBS:
+            N_JOBS = int(N_JOBS_EXT)
+
+    # setup AIND logging before any other logging call
+    ecephys_session_folders = [
+        p for p in data_folder.iterdir() if "ecephys" in p.name.lower() or "behavior" in p.name.lower()
+    ]
+    ecephys_session_folder = None
+    aind_log_setup = False
+    if len(ecephys_session_folders) == 1:
+        ecephys_session_folder = ecephys_session_folders[0]
+        if HAVE_AIND_LOG_UTILS:
+            # look for subject.json and data_description.json files
+            subject_json = ecephys_session_folder / "subject.json"
+            subject_id = "undefined"
+            if subject_json.is_file():
+                subject_data = json.load(open(subject_json, "r"))
+                subject_id = subject_data["subject_id"]
+
+            data_description_json = ecephys_session_folder / "data_description.json"
+            session_name = "undefined"
+            if data_description_json.is_file():
+                data_description = json.load(open(data_description_json, "r"))
+                session_name = data_description["name"]
+
+            log.setup_logging(
+                "Postprocess Ecephys",
+                subject_id=subject_id,
+                asset_name=session_name,
+            )
+            aind_log_setup = True
+
+    if not aind_log_setup:
+        logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(message)s")
+
+    logging.info(f"Running postprocessing with the following parameters:")
+    logging.info(f"\tUSE_MOTION_CORRECTED: {USE_MOTION_CORRECTED}")
+    logging.info(f"\tN_JOBS: {N_JOBS}")
+
     data_process_prefix = "data_process_postprocessing"
-    
+
+    job_kwargs = postprocessing_params.pop("job_kwargs")
+    job_kwargs["n_jobs"] = N_JOBS
     si.set_global_job_kwargs(**job_kwargs)
 
+    sparsity_params = postprocessing_params.pop("sparsity")
+    quality_metrics_names = postprocessing_params.pop("quality_metrics_names")
+    quality_metrics_params = postprocessing_params.pop("quality_metrics")
+
     ####### POSTPROCESSING ########
-    print("\nPOSTPROCESSING")
+    logging.info("\nPOSTPROCESSING")
     t_postprocessing_start_all = time.perf_counter()
 
     # check if test
     if (data_folder / "preprocessing_pipeline_output_test").is_dir():
-        print("\n*******************\n**** TEST MODE ****\n*******************\n")
+        logging.info("\n*******************\n**** TEST MODE ****\n*******************\n")
         preprocessed_folder = data_folder / "preprocessing_pipeline_output_test"
         spikesorted_folder = data_folder / "spikesorting_pipeline_output_test"
     else:
@@ -160,7 +172,7 @@ if __name__ == "__main__":
 
     # load job json files
     job_config_json_files = [p for p in data_folder.iterdir() if p.suffix == ".json" and "job" in p.name]
-    print(f"Found {len(job_config_json_files)} json configurations")
+    logging.info(f"Found {len(job_config_json_files)} json configurations")
 
     if len(job_config_json_files) > 0:
         recording_names = []
@@ -168,7 +180,9 @@ if __name__ == "__main__":
             with open(json_file, "r") as f:
                 config = json.load(f)
             recording_name = config["recording_name"]
-            assert (preprocessed_folder / f"preprocessed_{recording_name}").is_dir(), f"Preprocessed folder for {recording_name} not found!"
+            assert (
+                preprocessed_folder / f"preprocessed_{recording_name}"
+            ).is_dir(), f"Preprocessed folder for {recording_name} not found!"
             recording_names.append(recording_name)
     else:
         recording_names = [("_").join(p.name.split("_")[1:]) for p in preprocessed_folders]
@@ -177,88 +191,191 @@ if __name__ == "__main__":
         datetime_start_postprocessing = datetime.now()
         t_postprocessing_start = time.perf_counter()
         postprocessing_notes = ""
+        binary_json_file = preprocessed_folder / f"binary_{recording_name}.json"
+        preprocessed_json_file = preprocessed_folder / f"preprocessed_{recording_name}.json"
+        motion_corrected_folder = preprocessed_folder / f"motion_{recording_name}"
 
-        print(f"\tProcessing {recording_name}")
+        logging.info(f"\tProcessing {recording_name}")
         postprocessing_output_process_json = results_folder / f"{data_process_prefix}_{recording_name}.json"
-        postprocessing_output_folder = results_folder / f"postprocessed_{recording_name}"
-        postprocessing_sorting_output_folder = results_folder / f"postprocessed-sorting_{recording_name}"
+        postprocessing_output_folder = results_folder / f"postprocessed_{recording_name}.zarr"
 
-        recording = si.load_extractor(preprocessed_folder / f"preprocessed_{recording_name}")
+        try:
+            recording_bin = None
+            if binary_json_file.is_file():
+                recording_bin = si.load(binary_json_file, base_folder=preprocessed_folder)
+                logging.info(f"\tLoaded binary recording from JSON")
+            else:
+                recording_bin = si.load(preprocessed_folder / f"preprocessed_{recording_name}")
+            recording_lazy = None
+            try:
+                if preprocessed_json_file.is_file():
+                    logging.info(f"\tLoading lazy recording from JSON")
+                    recording_lazy = si.load(preprocessed_json_file, base_folder=data_folder)
+            except:
+                logging.info("Could not load lazy preprocessed recording")
+        except Exception as e:
+            logging.info(f"Spike sorting skipped on {recording_name}. Skipping postprocessing")
+            # create an empty result file (needed for pipeline)
+            postprocessing_output_folder.mkdir()
+            mock_array = np.array([], dtype=bool)
+            np.save(postprocessing_output_folder / "placeholder.npy", mock_array)
+            continue
+
+        if USE_MOTION_CORRECTED and motion_corrected_folder is not None:
+            from spikeinterface.sortingcomponents.motion import (
+                InterpolateMotionRecording,
+                interpolate_motion,
+            )
+
+            logging.info("\tCorrecting for motion prior to postprocessing")
+            if not isinstance(recording, InterpolateMotionRecording):
+                logging.info("\t\tApplying motion interpolation")
+                motion_info = spre.load_motion_info(motion_corrected_folder)
+                interpolate_motion_kwargs = motion_info["parameters"]["interpolate_motion_kwargs"]
+                recording_bin_f = spre.astype(recording_bin, "float32")
+
+                recording_bin = interpolate_motion(
+                    recording_bin_f,
+                    motion=motion_info["motion"],
+                    **interpolate_motion_kwargs
+                )
+                # InterpolateMotion is not compatible with times.
+                # Removing time info for postprocessing
+                for rec_segment in recording_bin._recording_segments:
+                    if rec_segment.time_vector is not None:
+                        rec_segment.time_vector = None
+
+                if recording_lazy is not None:
+                    recording_lazy_f = spre.astype(recording_bin, "float32")
+                    recording_lazy = interpolate_motion(
+                        recording_lazy_f,
+                        motion=motion_info["motion"],
+                        **interpolate_motion_kwargs
+                    )
+                    # InterpolateMotion is not compatible with times.
+                    # Removing time info for postprocessing
+                    for rec_segment in recording_lazy._recording_segments:
+                        if rec_segment.time_vector is not None:
+                            rec_segment.time_vector = None
+            else:
+                logging.info("\tRecording is already interpolated")
+
         # make sure we have spikesorted output for the block-stream
         sorted_folder = spikesorted_folder / f"spikesorted_{recording_name}"
         if not sorted_folder.is_dir():
             raise FileNotFoundError(f"Spike sorted data for {recording_name} not found!")
 
-        sorting = si.load_extractor(sorted_folder)
+        try:
+            sorting = si.load(sorted_folder)
+        except Exception as e:
+            logging.info(f"Spike sorting failed on {recording_name}. Skipping postprocessing")
+            # create an empty result file (needed for pipeline)
+            postprocessing_output_folder.mkdir()
+            mock_array = np.array([], dtype=bool)
+            np.save(postprocessing_output_folder / "placeholder.npy", mock_array)
+            continue
 
-        # first extract some raw waveforms in memory to deduplicate based on peak alignment
-        wf_dedup_folder = tmp_folder / "postprocessed" / recording_name
-        we_raw = si.extract_waveforms(recording, sorting, folder=wf_dedup_folder,
-                                      **postprocessing_params["waveforms_deduplicate"])
+        logging.info(f"\tCreating sorting analyzer")
+        sorting_analyzer_full = si.create_sorting_analyzer(
+            sorting=sorting,
+            recording=recording_bin,
+            sparse=True,
+            return_scaled=postprocessing_params["return_scaled"],
+            **sparsity_params
+        )
+        # compute templates for de-duplication
+        # now postprocess
+        analyzer_dict = postprocessing_params.copy()
+        analyzer_dict.pop("duplicate_threshold")
+        analyzer_dict.pop("return_scaled")
+        sorting_analyzer_full.compute("random_spikes", **analyzer_dict["random_spikes"])
+        sorting_analyzer_full.compute("templates")
         # de-duplication
-        sorting_deduplicated = sc.remove_redundant_units(we_raw, duplicate_threshold=postprocessing_params["duplicate_threshold"])
-        print(f"\tNumber of original units: {len(we_raw.sorting.unit_ids)} -- Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}")
+        sorting_deduplicated = sc.remove_redundant_units(
+            sorting_analyzer_full, duplicate_threshold=postprocessing_params["duplicate_threshold"]
+        )
+        logging.info(
+            f"\tNumber of original units: {len(sorting.unit_ids)} -- Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}"
+        )
         n_duplicated = int(len(sorting.unit_ids) - len(sorting_deduplicated.unit_ids))
         postprocessing_notes += f"\n- Removed {n_duplicated} duplicated units.\n"
         deduplicated_unit_ids = sorting_deduplicated.unit_ids
-        # use existing deduplicated waveforms to compute sparsity
-        sparsity_raw = si.compute_sparsity(we_raw, **sparsity_params)
-        sparsity_mask = sparsity_raw.mask[sorting.ids_to_indices(deduplicated_unit_ids), :]
-        sparsity = si.ChannelSparsity(mask=sparsity_mask, unit_ids=deduplicated_unit_ids, channel_ids=recording.channel_ids)
-        shutil.rmtree(wf_dedup_folder)
-        del we_raw
 
-        # this is a trick to make the postprocessed folder "self-contained
-        sorting_deduplicated = sorting_deduplicated.save(folder=postprocessing_sorting_output_folder)
+        sorting_analyzer_dedup = sorting_analyzer_full.select_units(sorting_deduplicated.unit_ids)
 
-        # now extract waveforms on de-duplicated units
-        print(f"\tSaving sparse de-duplicated waveform extractor folder")
-        we = si.extract_waveforms(recording, sorting_deduplicated, 
-                                  folder=postprocessing_output_folder, sparsity=sparsity, sparse=True,
-                                  overwrite=True, **postprocessing_params["waveforms"])
-        print("\tComputing spike amplitides")
-        amps = spost.compute_spike_amplitudes(we, **postprocessing_params["spike_amplitudes"])
-        print("\tComputing unit locations")
-        unit_locs = spost.compute_unit_locations(we, **postprocessing_params["locations"])
-        print("\tComputing spike locations")
-        spike_locs = spost.compute_spike_locations(we, **postprocessing_params["locations"])
-        print("\tComputing correlograms")
-        corr = spost.compute_correlograms(we, **postprocessing_params["correlograms"])
-        print("\tComputing ISI histograms")
-        tm = spost.compute_isi_histograms(we, **postprocessing_params["isis"])
-        print("\tComputing template similarity")
-        sim = spost.compute_template_similarity(we, **postprocessing_params["similarity"])
-        print("\tComputing template metrics")
-        tm = spost.compute_template_metrics(we, **postprocessing_params["template_metrics"])
-        print("\tComputing PCA")
-        pc = spost.compute_principal_components(we, **postprocessing_params["principal_components"])
-        print("\tComputing quality metrics")
-        qm = sqm.compute_quality_metrics(we, **postprocessing_params["quality_metrics"])
+        if recording_lazy is not None:
+            recording = recording_lazy
+            recording_tmp = recording_bin
+        else:
+            recording = recording_bin
+            recording_tmp = None
+
+        # create a sorting analyzer in binary_folder in scratch
+        # this prevents issues with shared memory sizes
+        sorting_analyzer = si.create_sorting_analyzer(
+            sorting=sorting_deduplicated,
+            recording=recording,
+            format="binary_folder",
+            folder=scratch_folder / "tmp_analyzer",
+            sparse=True,
+            return_scaled=postprocessing_params["return_scaled"],
+            sparsity=sorting_analyzer_dedup.sparsity
+        )
+
+        if recording_tmp is not None:
+            logging.info(f"\tSetting temporary binary recording")
+            sorting_analyzer.set_temporary_recording(recording_tmp)
+
+        # now compute all extensions
+        logging.info("\tComputing all postprocessing extensions")
+        sorting_analyzer.compute(analyzer_dict)
+            
+        logging.info("\tComputing quality metrics")
+        qm = sorting_analyzer.compute(
+            "quality_metrics",
+            metric_names=quality_metrics_names,
+            qm_params=quality_metrics_params
+        )
+
+        # save as zarr and delete tmp_analyzer
+        logging.info("\tSaving SortingAnalyzer to zarr")
+        sorting_analyzer = sorting_analyzer.save_as(
+            format="zarr",
+            folder=postprocessing_output_folder
+        )
+        try:
+           shutil.rmtree(scratch_folder / "tmp_analyzer")
+        except:
+           logging.info("Failed to delede temporary analyzer folder in scratch")
 
         t_postprocessing_end = time.perf_counter()
         elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
 
         # save params in output
         postprocessing_params["recording_name"] = recording_name
-        postprocessing_outputs = dict(
-            duplicated_units=n_duplicated
-        )
+        postprocessing_outputs = dict(duplicated_units=n_duplicated)
         postprocessing_process = DataProcess(
-                name="Ephys postprocessing",
-                version=VERSION, # either release or git commit
-                start_date_time=datetime_start_postprocessing,
-                end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
-                input_location=str(data_folder),
-                output_location=str(results_folder),
-                code_url=URL,
-                parameters=postprocessing_params,
-                outputs=postprocessing_outputs,
-                notes=postprocessing_notes
-            )
+            name="Ephys postprocessing",
+            software_version=VERSION,  # either release or git commit
+            start_date_time=datetime_start_postprocessing,
+            end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
+            input_location=str(data_folder),
+            output_location=str(results_folder),
+            code_url=URL,
+            parameters=postprocessing_params,
+            outputs=postprocessing_outputs,
+            notes=postprocessing_notes,
+        )
         with open(postprocessing_output_process_json, "w") as f:
-            f.write(postprocessing_process.json(indent=3))
+            f.write(postprocessing_process.model_dump_json(indent=3))
+
+        # copy data_description and subject json
+        if ecephys_session_folder is not None:
+            metadata_json_files = [p for p in ecephys_session_folder.iterdir() if p.suffix == ".json"]
+            for metadata_file in metadata_json_files:
+                if "data_description" in metadata_file.name or "subject" in metadata_file.name:
+                    shutil.copy(metadata_file, results_folder / f"postprocessing_{recording_name}_{metadata_file.name}")
 
     t_postprocessing_end_all = time.perf_counter()
     elapsed_time_postprocessing_all = np.round(t_postprocessing_end_all - t_postprocessing_start_all, 2)
-    print(f"POSTPROCESSING time: {elapsed_time_postprocessing_all}s")
-
+    logging.info(f"POSTPROCESSING time: {elapsed_time_postprocessing_all}s")
