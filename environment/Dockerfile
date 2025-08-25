@@ -14,10 +14,6 @@ COPY git-askpass /
 RUN pip install -U --no-cache-dir \
     aind-data-schema==1.3.0 \
     aind-log-utils==0.2.3 \
-<<<<<<< HEAD
     s3fs==2025.5.1 \
     spikeinterface[full]==0.103.0 \
-=======
-    spikeinterface[full]==0.102.3 \
->>>>>>> 725d11afa07816734956f8814a2c1f6b377b1354
     wavpack-numcodecs==0.2.2
