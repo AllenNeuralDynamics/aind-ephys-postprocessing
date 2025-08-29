@@ -346,7 +346,7 @@ if __name__ == "__main__":
         try:
            shutil.rmtree(scratch_folder / "tmp_analyzer")
         except:
-           logging.info("Failed to delede temporary analyzer folder in scratch")
+           logging.info("Failed to delete temporary analyzer folder in scratch")
 
         t_postprocessing_end = time.perf_counter()
         elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
