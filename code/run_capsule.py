@@ -29,7 +29,9 @@ import spikeinterface.curation as sc
 from spikeinterface.core.core_tools import check_json
 
 # AIND
-from aind_data_schema.core.processing import DataProcess
+from aind_data_schema.core.processing import DataProcess, ProcessStage
+from aind_data_schema.components.identifiers import Code
+from aind_data_schema_models.process_names import ProcessName
 
 try:
     from aind_log_utils import log
@@ -354,16 +356,21 @@ if __name__ == "__main__":
         # save params in output
         postprocessing_params["recording_name"] = recording_name
         postprocessing_outputs = dict(duplicated_units=n_duplicated)
+
         postprocessing_process = DataProcess(
+            process_type=ProcessName.EPHYS_POSTPROCESSING,
+            stage=ProcessStage.PROCESSING,
             name="Ephys postprocessing",
-            software_version=VERSION,  # either release or git commit
+            experimenters=["Alessio Buccino"],
+            code=Code(
+                url=URL,
+                version=VERSION, # either release or git commit
+                parameters=postprocessing_params
+            ),
             start_date_time=datetime_start_postprocessing,
             end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
-            input_location=str(data_folder),
-            output_location=str(results_folder),
-            code_url=URL,
-            parameters=postprocessing_params,
-            outputs=postprocessing_outputs,
+            output_path=str(results_folder),
+            output_parameters=postprocessing_outputs,
             notes=postprocessing_notes,
         )
         with open(postprocessing_output_process_json, "w") as f:
