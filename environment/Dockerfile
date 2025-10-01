@@ -1,4 +1,4 @@
-# hash:sha256:4a9dd69701eebe51f6651ae3ca7061fbb997d64008c15845c7b3c6f1bbaae9d9
+# hash:sha256:246044e9c78f07bdff88776d8745c0f5095da05b770fd2d30976569731975980
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
@@ -8,11 +8,11 @@ COPY git-askpass /
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        build-essential \
+        build-essential=12.9ubuntu3 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install -U --no-cache-dir \
-    aind-data-schema \
+    aind-data-schema==2.0.2 \
     aind-log-utils==0.2.3 \
     s3fs==2025.5.1 \
     spikeinterface[full]==0.103.0 \
