@@ -40,6 +40,13 @@ try:
 except ImportError:
     HAVE_AIND_LOG_UTILS = False
 
+try:
+    from aind_log_utils import log
+
+    HAVE_AIND_LOG_UTILS = True
+except ImportError:
+    HAVE_AIND_LOG_UTILS = False
+
 URL = "https://github.com/AllenNeuralDynamics/aind-ephys-postprocessing"
 VERSION = "1.0"
 
