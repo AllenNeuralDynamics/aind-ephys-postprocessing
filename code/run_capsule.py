@@ -29,7 +29,23 @@ import spikeinterface.curation as sc
 from spikeinterface.core.core_tools import check_json
 
 # AIND
-from aind_data_schema.core.processing import DataProcess
+from aind_data_schema.core.processing import DataProcess, ProcessStage
+from aind_data_schema.components.identifiers import Code
+from aind_data_schema_models.process_names import ProcessName
+
+try:
+    from aind_log_utils import log
+
+    HAVE_AIND_LOG_UTILS = True
+except ImportError:
+    HAVE_AIND_LOG_UTILS = False
+
+try:
+    from aind_log_utils import log
+
+    HAVE_AIND_LOG_UTILS = True
+except ImportError:
+    HAVE_AIND_LOG_UTILS = False
 
 try:
     from aind_log_utils import log
@@ -67,15 +83,6 @@ n_jobs_group.add_argument("--n-jobs", default="-1", help=n_jobs_help)
 parser.add_argument("--params", default=None, help="Path to the parameters file or JSON string. If given, it will override all other arguments.")
 
 if __name__ == "__main__":
-
-    # Get the total size of the shared memory filesystem
-    shm_stat = os.statvfs('/dev/shm')
-    total_shm = shm_stat.f_frsize * shm_stat.f_blocks  # Total size in bytes
-    free_shm = shm_stat.f_frsize * shm_stat.f_bfree    # Free size in bytes
-
-    print(f"Total /dev/shm size: {total_shm / 1024**3:.2f} GB")
-    print(f"Free /dev/shm size: {free_shm / 1024**3:.2f} GB")
-
     args = parser.parse_args()
 
     N_JOBS = args.static_n_jobs or args.n_jobs
@@ -346,7 +353,7 @@ if __name__ == "__main__":
         try:
            shutil.rmtree(scratch_folder / "tmp_analyzer")
         except:
-           logging.info("Failed to delede temporary analyzer folder in scratch")
+           logging.info("Failed to delete temporary analyzer folder in scratch")
 
         t_postprocessing_end = time.perf_counter()
         elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
@@ -354,16 +361,21 @@ if __name__ == "__main__":
         # save params in output
         postprocessing_params["recording_name"] = recording_name
         postprocessing_outputs = dict(duplicated_units=n_duplicated)
+
         postprocessing_process = DataProcess(
+            process_type=ProcessName.EPHYS_POSTPROCESSING,
+            stage=ProcessStage.PROCESSING,
             name="Ephys postprocessing",
-            software_version=VERSION,  # either release or git commit
+            experimenters=["Alessio Buccino"],
+            code=Code(
+                url=URL,
+                version=VERSION, # either release or git commit
+                parameters=postprocessing_params
+            ),
             start_date_time=datetime_start_postprocessing,
             end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
-            input_location=str(data_folder),
-            output_location=str(results_folder),
-            code_url=URL,
-            parameters=postprocessing_params,
-            outputs=postprocessing_outputs,
+            output_path=str(results_folder),
+            output_parameters=postprocessing_outputs,
             notes=postprocessing_notes,
         )
         with open(postprocessing_output_process_json, "w") as f:
