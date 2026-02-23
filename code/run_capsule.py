@@ -94,7 +94,7 @@ if __name__ == "__main__":
         
 
     # Use CO_CPUS/SLURM_CPUS_ON_NODE env variable if available
-    N_JOBS_EXT = os.getenv("CO_CPUS") or os.getenv("SLURM_CPUS_ON_NODE") or os.getenv("SLURM_CPUS_PER_TASK")
+    N_JOBS_EXT = os.getenv("CO_CPUS") or os.getenv("N_JOBS_EXT")
     if N_JOBS_EXT is not None:
         if isinstance(N_JOBS, float):
             N_JOBS = int(N_JOBS * int(N_JOBS_EXT))
