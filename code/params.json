@@ -29,6 +29,7 @@
     "spike_amplitudes": {
         "peak_sign": "neg"
     },
+    "amplitude_scalings": {},
     "template_similarity": {
         "method": "l1"
     },
@@ -48,7 +49,6 @@
     },
     "template_metrics": {
         "upsampling_factor": 10,
-        "sparsity": null,
         "include_multi_channel_metrics": true
     },
     "principal_components": {
@@ -56,6 +56,7 @@
         "mode": "by_channel_local",
         "whiten": true
     },
+    "valid_unit_periods": {},
     "quality_metrics_names": [
         "num_spikes",
         "firing_rate",
@@ -70,8 +71,7 @@
         "synchrony",
         "firing_range",
         "drift",
-        "isolation_distance",
-        "l_ratio",
+        "mahalanobis",
         "d_prime",
         "nearest_neighbor",
         "silhouette"
@@ -118,29 +118,20 @@
             "bin_size_s": 5, 
             "percentiles": [5, 95]
         },
-        "synchrony": {
-            "synchrony_sizes": [2, 4, 8]
-        },
+        "synchrony": {},
         "nearest_neighbor": {
             "max_spikes": 10000, 
             "n_neighbors": 4
         },
-        "nn_isolation": {
-            "max_spikes": 10000, 
-            "min_spikes": 10, 
-            "n_neighbors": 4, 
-            "n_components": 10, 
-            "radius_um": 100
-        },
-        "nn_noise_overlap": {
-            "max_spikes": 10000, 
-            "min_spikes": 10, 
-            "n_neighbors": 4, 
-            "n_components": 10, 
-            "radius_um": 100
-        },
-        "silhouette": {
-            "method": ["simplified"]
+        "nn_advanced": {
+            "max_spikes": 1000,
+            "min_spikes": 10,
+            "min_fr": 0.0,
+            "n_neighbors": 4,
+            "n_components": 10,
+            "radius_um": 100,
+            "peak_sign": "neg",
+            "min_spatial_overlap": 0.5
         }
     }
 }

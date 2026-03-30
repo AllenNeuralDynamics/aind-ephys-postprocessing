@@ -77,14 +77,6 @@ parser.add_argument("--params", default=None, help="Path to the parameters file 
 
 if __name__ == "__main__":
 
-    # Get the total size of the shared memory filesystem
-    shm_stat = os.statvfs('/dev/shm')
-    total_shm = shm_stat.f_frsize * shm_stat.f_blocks  # Total size in bytes
-    free_shm = shm_stat.f_frsize * shm_stat.f_bfree    # Free size in bytes
-
-    print(f"Total /dev/shm size: {total_shm / 1024**3:.2f} GB")
-    print(f"Free /dev/shm size: {free_shm / 1024**3:.2f} GB")
-
     args = parser.parse_args()
 
     N_JOBS = args.static_n_jobs or args.n_jobs
@@ -343,7 +335,7 @@ if __name__ == "__main__":
         qm = sorting_analyzer.compute(
             "quality_metrics",
             metric_names=quality_metrics_names,
-            qm_params=quality_metrics_params
+            metric_params=quality_metrics_params
         )
 
         # save as zarr and delete tmp_analyzer

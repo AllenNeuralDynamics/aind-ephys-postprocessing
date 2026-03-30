@@ -1,10 +1,10 @@
-# hash:sha256:c9918fd2e205b11e9225c4ce45ce3ca1240d1ecfed937fb6779e6bbf689d238f
+# hash:sha256:f38f683ce6fe50d6c76d09deb7acb807eb95460af7c4a271b8c8c667da42b746
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG GIT_ASKPASS
-COPY git-askpass /
+COPY git-ask-pass /
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -15,5 +15,5 @@ RUN pip install -U --no-cache-dir \
     aind-data-schema==2.4.0 \
     aind-log-utils==0.2.3 \
     s3fs==2025.5.1 \
-    spikeinterface[full]==0.103.0 \
+    spikeinterface[full]==0.104.0 \
     wavpack-numcodecs==0.2.2
