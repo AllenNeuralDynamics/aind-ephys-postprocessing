@@ -280,14 +280,16 @@ if __name__ == "__main__":
         )
 
         # now postprocess
-        extension_dict = postprocessing_params.get("extensions", {})
+        required_extension_dict = postprocessing_params.get("required_extensions")
+        required_extensions = ["random_spikes", "templates"]
+        for req in required_extensions:
+            if req not in required_extension_dict:
+                raise ValueError(
+                    f"'{req}' extension is required postprocessing and downstream steps, but not found in parameters"
+                )
 
-        # Compute templates for de-duplication
-        # random_spikes and templates are needed for de-duplication,
-        # so we compute them first if they are in the extensions dict
-        if "random_spikes" in extension_dict and "templates" in extension_dict:
-            sorting_analyzer_full.compute("random_spikes", **analyzer_dict["random_spikes"])
-            sorting_analyzer_full.compute("templates")
+        if postprocessing_params.get("duplicate_threshold") is not None:
+            sorting_analyzer_full.compute(required_extension_dict)
             sorting_deduplicated = sc.remove_redundant_units(
                 sorting_analyzer_full, duplicate_threshold=postprocessing_params["duplicate_threshold"]
             )
@@ -307,12 +309,10 @@ if __name__ == "__main__":
                 unit_ids=deduplicated_unit_ids,
             )
         else:
+            logging.info(f"\tSkipping de-duplication")
             sorting_deduplicated = sorting
             sparsity = sorting_analyzer_full.sparsity
-            logging.info(
-                f"\tDe-duplication skipped because 'random_spikes' and 'templates' extensions "
-                f"are required for de-duplication, but not found in extensions params."
-            )
+            n_duplicated = 0
 
         if recording_lazy is not None:
             recording = recording_lazy
@@ -339,11 +339,12 @@ if __name__ == "__main__":
 
         # Now compute all extensions
         # quality metrics are computed separately at the end, for better logging and error handling
-        quality_metrics_ext_params = extension_dict.pop("quality_metrics", None)
+        additional_extension_dict = postprocessing_params.get("additional_extensions", {})
+        quality_metrics_ext_params = additional_extension_dict.pop("quality_metrics", None)
 
-        if len(extension_dict) > 0:
+        if len(additional_extension_dict) > 0:
             logging.info("\tComputing all postprocessing extensions")
-            sorting_analyzer.compute(extension_dict)
+            sorting_analyzer.compute(additional_extension_dict)
 
         if quality_metrics_ext_params is not None:
             logging.info("\tComputing quality metrics")

@@ -9,21 +9,27 @@
     },
     "duplicate_threshold": 0.9,
     "return_in_uV": true,
-    "extensions": {
+    "required_extensions": {
         "random_spikes": {
             "max_spikes_per_unit": 500,
             "method": "uniform",
             "margin_size": null,
             "seed": null
         },
+        "templates": {
+            "ms_before": 2.0,
+            "ms_after": 3.0
+        }
+    },
+    "extensions": {
         "noise_levels": {
             "num_chunks_per_segment": 20,
             "chunk_size": 10000,
             "seed": null
         },
         "waveforms": {
-            "ms_before": 3.0,
-            "ms_after": 4.0,
+            "ms_before": 2.0,
+            "ms_after": 3.0,
             "dtype": null
         },
         "templates": {},
