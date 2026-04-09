@@ -21,7 +21,7 @@
             "ms_after": 3.0
         }
     },
-    "extensions": {
+    "additional_extensions": {
         "noise_levels": {
             "num_chunks_per_segment": 20,
             "chunk_size": 10000,
