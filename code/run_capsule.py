@@ -278,7 +278,7 @@ if __name__ == "__main__":
         )
 
         # now postprocess
-        extension_dict = postprocessing_params.get("extension_dict")
+        extension_dict = postprocessing_params.get("extensions", {})
         required_extensions = ["random_spikes", "templates"]
         for req in required_extensions:
             if req not in extension_dict:
