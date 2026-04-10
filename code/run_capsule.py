@@ -280,16 +280,16 @@ if __name__ == "__main__":
         )
 
         # now postprocess
-        required_extension_dict = postprocessing_params.get("required_extensions")
+        extension_dict = postprocessing_params.get("extension_dict")
         required_extensions = ["random_spikes", "templates"]
         for req in required_extensions:
-            if req not in required_extension_dict:
+            if req not in extension_dict:
                 raise ValueError(
                     f"'{req}' extension is required postprocessing and downstream steps, but not found in parameters"
                 )
-
+        extensions_for_duplication = {ext: extension_dict[ext] for ext in required_extensions}
         if postprocessing_params.get("duplicate_threshold") is not None:
-            sorting_analyzer_full.compute(required_extension_dict)
+            sorting_analyzer_full.compute(extensions_for_duplication)
             sorting_deduplicated = sc.remove_redundant_units(
                 sorting_analyzer_full, duplicate_threshold=postprocessing_params["duplicate_threshold"]
             )
@@ -339,12 +339,11 @@ if __name__ == "__main__":
 
         # Now compute all extensions
         # quality metrics are computed separately at the end, for better logging and error handling
-        additional_extension_dict = postprocessing_params.get("additional_extensions", {})
-        quality_metrics_ext_params = additional_extension_dict.pop("quality_metrics", None)
+        quality_metrics_ext_params = extension_dict.pop("quality_metrics", None)
 
         if len(additional_extension_dict) > 0:
             logging.info("\tComputing all postprocessing extensions")
-            sorting_analyzer.compute(additional_extension_dict)
+            sorting_analyzer.compute(extension_dict)
 
         if quality_metrics_ext_params is not None:
             logging.info("\tComputing quality metrics")

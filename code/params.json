@@ -9,19 +9,13 @@
     },
     "duplicate_threshold": 0.9,
     "return_in_uV": true,
-    "required_extensions": {
+    "extensions": {
         "random_spikes": {
             "max_spikes_per_unit": 500,
             "method": "uniform",
             "margin_size": null,
             "seed": null
         },
-        "templates": {
-            "ms_before": 2.0,
-            "ms_after": 3.0
-        }
-    },
-    "additional_extensions": {
         "noise_levels": {
             "num_chunks_per_segment": 20,
             "chunk_size": 10000,
