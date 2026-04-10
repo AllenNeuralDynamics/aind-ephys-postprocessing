@@ -56,7 +56,9 @@ use_motion_corrected_help = (
     "If True and motion corrected has been computed (and not applied), "
     "it applies motion interpolation to the recording prior to postprocessing."
 )
-use_motion_corrected_group.add_argument("static_use_motion_corrected", nargs="?", default="false", help=use_motion_corrected_help)
+use_motion_corrected_group.add_argument(
+    "static_use_motion_corrected", nargs="?", default="false", help=use_motion_corrected_help
+)
 use_motion_corrected_group.add_argument("--use-motion-corrected", action="store_true", help=use_motion_corrected_help)
 
 n_jobs_group = parser.add_mutually_exclusive_group()
@@ -67,7 +69,11 @@ n_jobs_help = (
 n_jobs_group.add_argument("static_n_jobs", nargs="?", default="-1", help=n_jobs_help)
 n_jobs_group.add_argument("--n-jobs", default="-1", help=n_jobs_help)
 
-parser.add_argument("--params", default=None, help="Path to the parameters file or JSON string. If given, it will override all other arguments.")
+parser.add_argument(
+    "--params",
+    default=None,
+    help="Path to the parameters file or JSON string. If given, it will override all other arguments.",
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -91,7 +97,6 @@ if __name__ == "__main__":
         with open("params.json", "r") as f:
             postprocessing_params = json.load(f)
         USE_MOTION_CORRECTED = args.use_motion_corrected or args.static_use_motion_corrected == "true"
-        
 
     # Use CO_CPUS/N_JOBS_EXT env variable if available
     N_JOBS_EXT = os.getenv("CO_CPUS") or os.getenv("N_JOBS_EXT")
@@ -146,8 +151,6 @@ if __name__ == "__main__":
     si.set_global_job_kwargs(**job_kwargs)
 
     sparsity_params = postprocessing_params.pop("sparsity")
-    quality_metrics_names = postprocessing_params.pop("quality_metrics_names")
-    quality_metrics_params = postprocessing_params.pop("quality_metrics")
 
     ####### POSTPROCESSING ########
     logging.info("\nPOSTPROCESSING")
@@ -229,9 +232,7 @@ if __name__ == "__main__":
                 recording_bin_f = spre.astype(recording_bin, "float32")
 
                 recording_bin = interpolate_motion(
-                    recording_bin_f,
-                    motion=motion_info["motion"],
-                    **interpolate_motion_kwargs
+                    recording_bin_f, motion=motion_info["motion"], **interpolate_motion_kwargs
                 )
                 # InterpolateMotion is not compatible with times.
                 # Removing time info for postprocessing
@@ -242,9 +243,7 @@ if __name__ == "__main__":
                 if recording_lazy is not None:
                     recording_lazy_f = spre.astype(recording_bin, "float32")
                     recording_lazy = interpolate_motion(
-                        recording_lazy_f,
-                        motion=motion_info["motion"],
-                        **interpolate_motion_kwargs
+                        recording_lazy_f, motion=motion_info["motion"], **interpolate_motion_kwargs
                     )
                     # InterpolateMotion is not compatible with times.
                     # Removing time info for postprocessing
@@ -269,33 +268,49 @@ if __name__ == "__main__":
             np.save(postprocessing_output_folder / "placeholder.npy", mock_array)
             continue
 
+        # First, we create a full sorting analyzer with the binary recording and all units,
+        # this is needed to compute sparsity and some extensions that are needed for de-duplication
+        # (e.g. random_spikes and templates)
         logging.info(f"\tCreating sorting analyzer")
+        return_in_uV = postprocessing_params.get("return_in_uV") or postprocessing_params.get("return_scaled")
         sorting_analyzer_full = si.create_sorting_analyzer(
-            sorting=sorting,
-            recording=recording_bin,
-            sparse=True,
-            return_scaled=postprocessing_params["return_scaled"],
-            **sparsity_params
+            sorting=sorting, recording=recording_bin, sparse=True, return_in_uV=return_in_uV, **sparsity_params
         )
-        # compute templates for de-duplication
-        # now postprocess
-        analyzer_dict = postprocessing_params.copy()
-        analyzer_dict.pop("duplicate_threshold")
-        analyzer_dict.pop("return_scaled")
-        sorting_analyzer_full.compute("random_spikes", **analyzer_dict["random_spikes"])
-        sorting_analyzer_full.compute("templates")
-        # de-duplication
-        sorting_deduplicated = sc.remove_redundant_units(
-            sorting_analyzer_full, duplicate_threshold=postprocessing_params["duplicate_threshold"]
-        )
-        logging.info(
-            f"\tNumber of original units: {len(sorting.unit_ids)} -- Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}"
-        )
-        n_duplicated = int(len(sorting.unit_ids) - len(sorting_deduplicated.unit_ids))
-        postprocessing_notes += f"\n- Removed {n_duplicated} duplicated units.\n"
-        deduplicated_unit_ids = sorting_deduplicated.unit_ids
 
-        sorting_analyzer_dedup = sorting_analyzer_full.select_units(sorting_deduplicated.unit_ids)
+        # now postprocess
+        extension_dict = postprocessing_params.get("extensions", {})
+        required_extensions = ["random_spikes", "templates"]
+        for req in required_extensions:
+            if req not in extension_dict:
+                raise ValueError(
+                    f"'{req}' extension is required postprocessing and downstream steps, but not found in parameters"
+                )
+        extensions_for_duplication = {ext: extension_dict[ext] for ext in required_extensions}
+        if postprocessing_params.get("duplicate_threshold") is not None:
+            sorting_analyzer_full.compute(extensions_for_duplication)
+            sorting_deduplicated = sc.remove_redundant_units(
+                sorting_analyzer_full, duplicate_threshold=postprocessing_params["duplicate_threshold"]
+            )
+            logging.info(
+                f"\tNumber of original units: {len(sorting.unit_ids)} -- "
+                f"Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}"
+            )
+            n_duplicated = int(len(sorting.unit_ids) - len(sorting_deduplicated.unit_ids))
+            postprocessing_notes += f"\n- Removed {n_duplicated} duplicated units.\n"
+            deduplicated_unit_ids = sorting_deduplicated.unit_ids
+            deduplicated_unit_indices = sorting.ids_to_indices(deduplicated_unit_ids)
+
+            full_sparsity = sorting_analyzer_full.sparsity
+            sparsity = si.ChannelSparsity(
+                mask=full_sparsity.mask[deduplicated_unit_indices, :],
+                channel_ids=full_sparsity.channel_ids,
+                unit_ids=deduplicated_unit_ids,
+            )
+        else:
+            logging.info(f"\tSkipping de-duplication")
+            sorting_deduplicated = sorting
+            sparsity = sorting_analyzer_full.sparsity
+            n_duplicated = 0
 
         if recording_lazy is not None:
             recording = recording_lazy
@@ -304,7 +319,7 @@ if __name__ == "__main__":
             recording = recording_bin
             recording_tmp = None
 
-        # create a sorting analyzer in binary_folder in scratch
+        # Create a sorting analyzer in binary_folder in scratch
         # this prevents issues with shared memory sizes
         sorting_analyzer = si.create_sorting_analyzer(
             sorting=sorting_deduplicated,
@@ -312,35 +327,33 @@ if __name__ == "__main__":
             format="binary_folder",
             folder=scratch_folder / "tmp_analyzer",
             sparse=True,
-            return_scaled=postprocessing_params["return_scaled"],
-            sparsity=sorting_analyzer_dedup.sparsity
+            return_scaled=return_in_uV,
+            sparsity=sparsity,
         )
 
         if recording_tmp is not None:
             logging.info(f"\tSetting temporary binary recording")
             sorting_analyzer.set_temporary_recording(recording_tmp)
 
-        # now compute all extensions
-        logging.info("\tComputing all postprocessing extensions")
-        sorting_analyzer.compute(analyzer_dict)
-            
-        logging.info("\tComputing quality metrics")
-        qm = sorting_analyzer.compute(
-            "quality_metrics",
-            metric_names=quality_metrics_names,
-            qm_params=quality_metrics_params
-        )
+        # Now compute all extensions
+        # quality metrics are computed separately at the end, for better logging and error handling
+        quality_metrics_ext_params = extension_dict.pop("quality_metrics", None)
+
+        if len(extension_dict) > 0:
+            logging.info(f"\tComputing postprocessing extensions: {list(extension_dict.keys())}")
+            sorting_analyzer.compute(extension_dict)
+
+        if quality_metrics_ext_params is not None:
+            logging.info("\tComputing quality metrics")
+            _ = sorting_analyzer.compute("quality_metrics", **quality_metrics_ext_params)
 
         # save as zarr and delete tmp_analyzer
         logging.info("\tSaving SortingAnalyzer to zarr")
-        sorting_analyzer = sorting_analyzer.save_as(
-            format="zarr",
-            folder=postprocessing_output_folder
-        )
+        sorting_analyzer = sorting_analyzer.save_as(format="zarr", folder=postprocessing_output_folder)
         try:
-           shutil.rmtree(scratch_folder / "tmp_analyzer")
+            shutil.rmtree(scratch_folder / "tmp_analyzer")
         except:
-           logging.info("Failed to delete temporary analyzer folder in scratch")
+            logging.info("Failed to delete temporary analyzer folder in scratch")
 
         t_postprocessing_end = time.perf_counter()
         elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
@@ -354,11 +367,7 @@ if __name__ == "__main__":
             stage=ProcessStage.PROCESSING,
             name="Ephys postprocessing",
             experimenters=["Alessio Buccino"],
-            code=Code(
-                url=URL,
-                version=VERSION, # either release or git commit
-                parameters=postprocessing_params
-            ),
+            code=Code(url=URL, version=VERSION, parameters=postprocessing_params),  # either release or git commit
             start_date_time=datetime_start_postprocessing,
             end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
             output_path=str(results_folder),
