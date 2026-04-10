@@ -342,7 +342,7 @@ if __name__ == "__main__":
         quality_metrics_ext_params = extension_dict.pop("quality_metrics", None)
 
         if len(additional_extension_dict) > 0:
-            logging.info("\tComputing all postprocessing extensions")
+            logging.info(f"\tComputing postprocessing extensions: {list(extension_dict.keys())}")
             sorting_analyzer.compute(extension_dict)
 
         if quality_metrics_ext_params is not None:
