@@ -339,7 +339,7 @@ if __name__ == "__main__":
         # quality metrics are computed separately at the end, for better logging and error handling
         quality_metrics_ext_params = extension_dict.pop("quality_metrics", None)
 
-        if len(additional_extension_dict) > 0:
+        if len(extension_dict) > 0:
             logging.info(f"\tComputing postprocessing extensions: {list(extension_dict.keys())}")
             sorting_analyzer.compute(extension_dict)
 
