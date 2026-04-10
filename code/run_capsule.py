@@ -151,8 +151,6 @@ if __name__ == "__main__":
     si.set_global_job_kwargs(**job_kwargs)
 
     sparsity_params = postprocessing_params.pop("sparsity")
-    quality_metrics_names = postprocessing_params.pop("quality_metrics_names")
-    quality_metrics_params = postprocessing_params.pop("quality_metrics")
 
     ####### POSTPROCESSING ########
     logging.info("\nPOSTPROCESSING")
