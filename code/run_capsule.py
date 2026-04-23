@@ -70,6 +70,10 @@ n_jobs_group.add_argument("--n-jobs", default="-1", help=n_jobs_help)
 parser.add_argument("--params", default=None, help="Path to the parameters file or JSON string. If given, it will override all other arguments.")
 
 if __name__ == "__main__":
+<<<<<<< HEAD
+=======
+
+>>>>>>> dev
     args = parser.parse_args()
 
     N_JOBS = args.static_n_jobs or args.n_jobs
@@ -328,7 +332,7 @@ if __name__ == "__main__":
         qm = sorting_analyzer.compute(
             "quality_metrics",
             metric_names=quality_metrics_names,
-            qm_params=quality_metrics_params
+            metric_params=quality_metrics_params
         )
 
         # save as zarr and delete tmp_analyzer
