@@ -366,8 +366,12 @@ if __name__ == "__main__":
             process_type=ProcessName.EPHYS_POSTPROCESSING,
             stage=ProcessStage.PROCESSING,
             name="Ephys postprocessing",
-            experimenters=["Alessio Buccino"],
-            code=Code(url=URL, version=VERSION, parameters=postprocessing_params),  # either release or git commit
+            experimenters=["AIND Pipeline"],
+            code=Code(
+                url=URL,
+                version=VERSION, # either release or git commit
+                parameters=postprocessing_params
+            ),
             start_date_time=datetime_start_postprocessing,
             end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
             output_path=str(results_folder),
