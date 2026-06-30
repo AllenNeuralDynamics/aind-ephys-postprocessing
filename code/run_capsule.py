@@ -335,18 +335,6 @@ if __name__ == "__main__":
             logging.info(f"\tSetting temporary binary recording")
             sorting_analyzer.set_temporary_recording(recording_tmp)
 
-<<<<<<< HEAD
-        # now compute all extensions
-        logging.info("\tComputing all postprocessing extensions")
-        sorting_analyzer.compute(analyzer_dict)
-            
-        logging.info("\tComputing quality metrics")
-        qm = sorting_analyzer.compute(
-            "quality_metrics",
-            metric_names=quality_metrics_names,
-            metric_params=quality_metrics_params
-        )
-=======
         # Now compute all extensions
         # quality metrics are computed separately at the end, for better logging and error handling
         quality_metrics_ext_params = extension_dict.pop("quality_metrics", None)
@@ -358,7 +346,6 @@ if __name__ == "__main__":
         if quality_metrics_ext_params is not None:
             logging.info("\tComputing quality metrics")
             _ = sorting_analyzer.compute("quality_metrics", **quality_metrics_ext_params)
->>>>>>> 40be6157163afb4f0676bde325f97daa2390c2a9
 
         # save as zarr and delete tmp_analyzer
         logging.info("\tSaving SortingAnalyzer to zarr")
