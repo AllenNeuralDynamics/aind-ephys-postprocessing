@@ -1,5 +1,5 @@
 metadata_version: 1
-name: Postprocess Ecephys (dev)
+name: Postprocess Ecephys
 description: |-
   This capsule is designed to postprocess ephys data for the AIND pipeline.
 
