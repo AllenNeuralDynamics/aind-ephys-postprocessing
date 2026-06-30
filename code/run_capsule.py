@@ -70,10 +70,6 @@ n_jobs_group.add_argument("--n-jobs", default="-1", help=n_jobs_help)
 parser.add_argument("--params", default=None, help="Path to the parameters file or JSON string. If given, it will override all other arguments.")
 
 if __name__ == "__main__":
-<<<<<<< HEAD
-=======
-
->>>>>>> dev
     args = parser.parse_args()
 
     N_JOBS = args.static_n_jobs or args.n_jobs
