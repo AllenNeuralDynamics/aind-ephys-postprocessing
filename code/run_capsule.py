@@ -93,8 +93,8 @@ if __name__ == "__main__":
         USE_MOTION_CORRECTED = args.use_motion_corrected or args.static_use_motion_corrected == "true"
         
 
-    # Use CO_CPUS/SLURM_CPUS_ON_NODE env variable if available
-    N_JOBS_EXT = os.getenv("CO_CPUS") or os.getenv("SLURM_CPUS_ON_NODE") or os.getenv("SLURM_CPUS_PER_TASK")
+    # Use CO_CPUS/N_JOBS_EXT env variable if available
+    N_JOBS_EXT = os.getenv("CO_CPUS") or os.getenv("N_JOBS_EXT")
     if N_JOBS_EXT is not None:
         if isinstance(N_JOBS, float):
             N_JOBS = int(N_JOBS * int(N_JOBS_EXT))
@@ -328,7 +328,7 @@ if __name__ == "__main__":
         qm = sorting_analyzer.compute(
             "quality_metrics",
             metric_names=quality_metrics_names,
-            qm_params=quality_metrics_params
+            metric_params=quality_metrics_params
         )
 
         # save as zarr and delete tmp_analyzer
