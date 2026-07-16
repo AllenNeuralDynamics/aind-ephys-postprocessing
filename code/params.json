@@ -28,9 +28,7 @@
         },
         "templates": {},
         "amplitude_scalings": {},
-        "spike_amplitudes": {
-            "peak_sign": "neg"
-        },
+        "spike_amplitudes": {},
         "template_similarity": {
             "method": "l1"
         },
@@ -85,8 +83,7 @@
                     "bin_duration_s": 60
                 },
                 "snr": {
-                    "peak_sign": "both",
-                    "peak_mode": "extremum"
+                    "method": "extremum"
                 },
                 "isi_violation": {
                     "isi_threshold_ms": 1.5,
@@ -104,14 +101,11 @@
                     "contamination_values": null
                 },
                 "amplitude_cutoff": {
-                    "peak_sign": "neg",
                     "num_histogram_bins": 100,
                     "histogram_smoothing_value": 3,
                     "amplitudes_bins_min_ratio": 5
                 },
-                "amplitude_median": {
-                    "peak_sign": "neg"
-                },
+                "amplitude_median": {},
                 "amplitude_cv": {
                     "average_num_spikes_per_bin": 50,
                     "percentiles": [5,95],
@@ -127,7 +121,6 @@
                     "censored_period_ms": 4.0,
                     "correct_for_drift": true,
                     "correct_for_template_itself": true,
-                    "peak_sign": "neg"
                 },
                 "firing_range": {
                     "bin_size_s": 5,
