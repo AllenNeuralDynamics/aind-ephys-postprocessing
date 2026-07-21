@@ -69,6 +69,13 @@ n_jobs_help = (
 n_jobs_group.add_argument("static_n_jobs", nargs="?", default="-1", help=n_jobs_help)
 n_jobs_group.add_argument("--n-jobs", default="-1", help=n_jobs_help)
 
+max_spikes_per_unit_group = parser.add_mutually_exclusive_group()
+max_spikes_per_unit_help = "Maximum number of spikes to keep per unit for the random_spikes extension"
+max_spikes_per_unit_group.add_argument(
+    "static_max_spikes_per_unit", nargs="?", default=None, help=max_spikes_per_unit_help
+)
+max_spikes_per_unit_group.add_argument("--max-spikes-per-unit", default=None, help=max_spikes_per_unit_help)
+
 parser.add_argument(
     "--params",
     default=None,
@@ -80,6 +87,7 @@ if __name__ == "__main__":
 
     N_JOBS = args.static_n_jobs or args.n_jobs
     N_JOBS = int(N_JOBS) if not N_JOBS.startswith("0.") else float(N_JOBS)
+    MAX_SPIKES_PER_UNIT = args.static_max_spikes_per_unit or args.max_spikes_per_unit
     PARAMS = args.params
 
     if PARAMS is not None:
@@ -94,9 +102,16 @@ if __name__ == "__main__":
                 raise ValueError(f"Invalid parameters: {PARAMS} is not a valid JSON string or file path")
         USE_MOTION_CORRECTED = postprocessing_params.pop("use_motion_corrected", False)
     else:
+        # Here is where the params.json files is loaded and parsed
         with open("params.json", "r") as f:
             postprocessing_params = json.load(f)
         USE_MOTION_CORRECTED = args.use_motion_corrected or args.static_use_motion_corrected == "true"
+
+        # Set the parsed value of max_spikes_per_unit in postprocessing_params
+        if MAX_SPIKES_PER_UNIT is not None:
+            postprocessing_params.setdefault("extensions", {}).setdefault("random_spikes", {})[
+                "max_spikes_per_unit"
+            ] = int(MAX_SPIKES_PER_UNIT)
 
     # Use CO_CPUS/N_JOBS_EXT env variable if available
     N_JOBS_EXT = os.getenv("CO_CPUS") or os.getenv("N_JOBS_EXT")
