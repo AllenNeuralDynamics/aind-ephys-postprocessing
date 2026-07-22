@@ -61,6 +61,13 @@ use_motion_corrected_group.add_argument(
 )
 use_motion_corrected_group.add_argument("--use-motion-corrected", action="store_true", help=use_motion_corrected_help)
 
+max_spikes_per_unit_group = parser.add_mutually_exclusive_group()
+max_spikes_per_unit_help = "Maximum number of spikes to keep per unit for the random_spikes extension"
+max_spikes_per_unit_group.add_argument(
+    "static_max_spikes_per_unit", nargs="?", default=None, help=max_spikes_per_unit_help
+)
+max_spikes_per_unit_group.add_argument("--max-spikes-per-unit", default=None, help=max_spikes_per_unit_help)
+
 n_jobs_group = parser.add_mutually_exclusive_group()
 n_jobs_help = (
     "Number of jobs to use for parallel processing. Default is 0.8 (all available cores). "
@@ -68,13 +75,6 @@ n_jobs_help = (
 )
 n_jobs_group.add_argument("static_n_jobs", nargs="?", default="-1", help=n_jobs_help)
 n_jobs_group.add_argument("--n-jobs", default="-1", help=n_jobs_help)
-
-max_spikes_per_unit_group = parser.add_mutually_exclusive_group()
-max_spikes_per_unit_help = "Maximum number of spikes to keep per unit for the random_spikes extension"
-max_spikes_per_unit_group.add_argument(
-    "static_max_spikes_per_unit", nargs="?", default=None, help=max_spikes_per_unit_help
-)
-max_spikes_per_unit_group.add_argument("--max-spikes-per-unit", default=None, help=max_spikes_per_unit_help)
 
 parser.add_argument(
     "--params",
