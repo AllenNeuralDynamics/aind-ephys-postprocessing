@@ -68,6 +68,13 @@ max_spikes_per_unit_group.add_argument(
 )
 max_spikes_per_unit_group.add_argument("--max-spikes-per-unit", default=None, help=max_spikes_per_unit_help)
 
+additional_extensions_group = parser.add_mutually_exclusive_group()
+additional_extensions_help = "Additional extensions to compute (comma-separated). If 'all' or None, all extensions are computed"
+additional_extensions_group.add_argument(
+    "static_additional_extensions", nargs="?", default=None, help=additional_extensions_help
+)
+additional_extensions_group.add_argument("--additional-extensions", default=None, help=additional_extensions_help)
+
 n_jobs_group = parser.add_mutually_exclusive_group()
 n_jobs_help = (
     "Number of jobs to use for parallel processing. Default is 0.8 (all available cores). "
@@ -88,6 +95,9 @@ if __name__ == "__main__":
     N_JOBS = args.static_n_jobs or args.n_jobs
     N_JOBS = int(N_JOBS) if not N_JOBS.startswith("0.") else float(N_JOBS)
     MAX_SPIKES_PER_UNIT = args.static_max_spikes_per_unit or args.max_spikes_per_unit
+    ADDITIONAL_EXTENSIONS = args.static_additional_extensions or args.additional_extensions
+    if isinstance(ADDITIONAL_EXTENSIONS, str) and ADDITIONAL_EXTENSIONS == "all":
+        ADDITIONAL_EXTENSIONS = None 
     PARAMS = args.params
 
     if PARAMS is not None:
@@ -157,6 +167,8 @@ if __name__ == "__main__":
 
     logging.info(f"Running postprocessing with the following parameters:")
     logging.info(f"\tUSE_MOTION_CORRECTED: {USE_MOTION_CORRECTED}")
+    logging.info(f"\tMAX_SPIKES_PER_UNIT: {MAX_SPIKES_PER_UNIT}")
+    logging.info(f"\tADDITIONAL_EXTENSIONS: {ADDITIONAL_EXTENSIONS}")
     logging.info(f"\tN_JOBS: {N_JOBS}")
 
     data_process_prefix = "data_process_postprocessing"
@@ -353,6 +365,18 @@ if __name__ == "__main__":
         # Now compute all extensions
         # quality metrics are computed separately at the end, for better logging and error handling
         quality_metrics_ext_params = extension_dict.pop("quality_metrics", None)
+
+        ALWAYS_COMPUTE = ["unit_locations", "correlograms", "noise_levels", "template_metrics"] + required_extensions
+        if ADDITIONAL_EXTENSIONS is not None:
+            # remove all extensions not listed
+            additional_extensions = ADDITIONAL_EXTENSIONS.split(",")
+            for ext_name in list(extension_dict.keys()):
+                if ext_name in ALWAYS_COMPUTE:
+                    # always compute these
+                    continue
+                if ext_name not in additional_extensions:
+                    extension_dict.pop(ext_name)
+
 
         if len(extension_dict) > 0:
             logging.info(f"\tComputing postprocessing extensions: {list(extension_dict.keys())}")
