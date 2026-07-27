@@ -366,7 +366,8 @@ if __name__ == "__main__":
         # quality metrics are computed separately at the end, for better logging and error handling
         quality_metrics_ext_params = extension_dict.pop("quality_metrics", None)
 
-        ALWAYS_COMPUTE = ["unit_locations", "correlograms", "noise_levels", "template_metrics"] + required_extensions
+        ALWAYS_COMPUTE = ["unit_locations", "correlograms", "noise_levels", "template_metrics", "template_similarity"]
+        ALWAYS_COMPUTE += required_extensions
         if ADDITIONAL_EXTENSIONS is not None:
             # remove all extensions not listed
             additional_extensions = ADDITIONAL_EXTENSIONS.split(",")
