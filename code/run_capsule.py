@@ -299,7 +299,7 @@ if __name__ == "__main__":
         # this is needed to compute sparsity and some extensions that are needed for de-duplication
         # (e.g. random_spikes and templates)
         logging.info(f"\tCreating sorting analyzer")
-        return_in_uV = postprocessing_params.get("return_in_uV") or postprocessing_params.get("return_scaled")
+        return_in_uV = postprocessing_params.get("return_in_uV", True)
         sorting_analyzer_full = si.create_sorting_analyzer(
             sorting=sorting, recording=recording_bin, sparse=True, return_in_uV=return_in_uV, **sparsity_params
         )
@@ -351,6 +351,8 @@ if __name__ == "__main__":
         sorting_analyzer = si.create_sorting_analyzer(
             sorting=sorting_deduplicated,
             recording=recording,
+            # format="zarr",
+            # folder=postprocessing_output_folder,
             format="binary_folder",
             folder=scratch_folder / "tmp_analyzer",
             sparse=True,
