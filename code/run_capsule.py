@@ -33,15 +33,7 @@ from aind_data_schema.core.processing import DataProcess, ProcessStage
 from aind_data_schema.components.identifiers import Code
 from aind_data_schema_models.process_names import ProcessName
 
-try:
-    from aind_log_utils import log
-
-    HAVE_AIND_LOG_UTILS = True
-except ImportError:
-    HAVE_AIND_LOG_UTILS = False
-
-
-URL = "https://github.com/AllenNeuralDynamics/aind-ephys-postprocessing"
+URL ="https://github.com/AllenNeuralDynamics/aind-ephys-postprocessing"
 VERSION = "1.0"
 
 data_folder = Path("../data/")
@@ -75,7 +67,8 @@ parser.add_argument(
     help="Path to the parameters file or JSON string. If given, it will override all other arguments.",
 )
 
-if __name__ == "__main__":
+def run() -> None:
+    """Entrypoint for the postprocessing capsule."""
     args = parser.parse_args()
 
     N_JOBS = args.static_n_jobs or args.n_jobs
@@ -98,6 +91,8 @@ if __name__ == "__main__":
             postprocessing_params = json.load(f)
         USE_MOTION_CORRECTED = args.use_motion_corrected or args.static_use_motion_corrected == "true"
 
+    LOGGING = postprocessing_params.pop("logging", None)
+
     # Use CO_CPUS/N_JOBS_EXT env variable if available
     N_JOBS_EXT = os.getenv("CO_CPUS") or os.getenv("N_JOBS_EXT")
     if N_JOBS_EXT is not None:
@@ -108,38 +103,47 @@ if __name__ == "__main__":
         elif int(N_JOBS_EXT) < N_JOBS:
             N_JOBS = int(N_JOBS_EXT)
 
-    # setup AIND logging before any other logging call
     ecephys_session_folders = [
         p for p in data_folder.iterdir() if "ecephys" in p.name.lower() or "behavior" in p.name.lower()
     ]
     ecephys_session_folder = None
-    aind_log_setup = False
     if len(ecephys_session_folders) == 1:
         ecephys_session_folder = ecephys_session_folders[0]
-        if HAVE_AIND_LOG_UTILS:
-            # look for subject.json and data_description.json files
-            subject_json = ecephys_session_folder / "subject.json"
-            subject_id = "undefined"
-            if subject_json.is_file():
-                subject_data = json.load(open(subject_json, "r"))
-                subject_id = subject_data["subject_id"]
 
-            data_description_json = ecephys_session_folder / "data_description.json"
-            session_name = "undefined"
-            if data_description_json.is_file():
-                data_description = json.load(open(data_description_json, "r"))
-                session_name = data_description["name"]
+    # setup logging before any other logging call
+    if LOGGING is None:
+        logging.basicConfig(level="INFO", stream=sys.stdout, format="%(message)s")
+    else:
+        if LOGGING["package"] == "logging":
+            logging_cfg = LOGGING.get("logging_cfg", {})
+            logging.basicConfig(stream=sys.stdout, **logging_cfg)
+        elif LOGGING["package"] == "log-schema":
+            import log_schema
 
-            log.setup_logging(
-                "Postprocess Ecephys",
-                subject_id=subject_id,
-                asset_name=session_name,
+            pipeline_name = LOGGING.get("pipeline_name", "AIND Ephys Pipeline")
+            acquisition_name = LOGGING.get("acquisition_name", None)
+
+            if acquisition_name is None:
+                data_description_json = list(data_folder.glob("**/data_description.json"))
+                if len(data_description_json) > 0:
+                    data_description_json = data_description_json[0]
+                    with open(data_description_json, "r") as f:
+                        data_description = json.load(f)
+                    acquisition_name = data_description["name"]
+
+            config = LOGGING.get("logging_cfg")
+            if config is not None and len(config) == 0:
+                config = None
+            log_schema.setup_logging(
+                config=config,
+                model={
+                    "pipeline_name": pipeline_name,
+                    "acquisition_name": acquisition_name,
+                    "process_name": "Postprocessing"
+                }
             )
-            aind_log_setup = True
 
-    if not aind_log_setup:
-        logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(message)s")
-
+    logging.info("Begin processing...", extra={"event_type": "stage_start"})
     logging.info(f"Running postprocessing with the following parameters:")
     logging.info(f"\tUSE_MOTION_CORRECTED: {USE_MOTION_CORRECTED}")
     logging.info(f"\tN_JOBS: {N_JOBS}")
@@ -391,3 +395,12 @@ if __name__ == "__main__":
     t_postprocessing_end_all = time.perf_counter()
     elapsed_time_postprocessing_all = np.round(t_postprocessing_end_all - t_postprocessing_start_all, 2)
     logging.info(f"POSTPROCESSING time: {elapsed_time_postprocessing_all}s")
+    logging.info("Pipeline stage completed", extra={"event_type": "stage_complete"})
+
+
+if __name__ == "__main__":
+    try:
+        run()
+    except Exception as e:
+        logging.exception("Pipeline stage failed", extra={"event_type": "stage_error"})
+        raise
