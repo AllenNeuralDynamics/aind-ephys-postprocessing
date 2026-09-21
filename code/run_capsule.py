@@ -23,7 +23,6 @@ from datetime import datetime, timedelta
 import spikeinterface as si
 import spikeinterface.preprocessing as spre
 import spikeinterface.postprocessing as spost
-import spikeinterface.qualitymetrics as sqm
 import spikeinterface.curation as sc
 
 from spikeinterface.core.core_tools import check_json
