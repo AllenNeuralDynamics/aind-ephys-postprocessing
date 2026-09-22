@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -e
 
-# Installing SI from the alejoe91/chronic branch:
-# Synced with main but also has #4708 to reduce waveforms memory footprint
-# 76fb06ff9e81dfac7279f397d536f7ca88c9fe37
-pip install git+https://github.com/alejoe91/spikeinterface.git@76fb06ff9e81dfac7279f397d536f7ca88c9fe37
+# Installing SI from the #4708 to reduce waveforms memory footprint
+# 1f3629cac7676f0d4c10546d7512b5fd9da050bd
+pip install git+https://github.com/alejoe91/spikeinterface.git@1f3629cac7676f0d4c10546d7512b5fd9da050bd
