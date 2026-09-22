@@ -324,12 +324,14 @@ if __name__ == "__main__":
         sorting_analyzer = si.create_sorting_analyzer(
             sorting=sorting_deduplicated,
             recording=recording,
-            format="binary_folder",
-            folder=scratch_folder / "tmp_analyzer",
+            format="zarr",
+            folder=postprocessing_output_folder,
             sparse=True,
             return_scaled=return_in_uV,
             sparsity=sparsity,
+            lazy=True
         )
+        del sorting_analyzer_full
 
         if recording_tmp is not None:
             logging.info(f"\tSetting temporary binary recording")
@@ -346,14 +348,6 @@ if __name__ == "__main__":
         if quality_metrics_ext_params is not None:
             logging.info("\tComputing quality metrics")
             _ = sorting_analyzer.compute("quality_metrics", **quality_metrics_ext_params)
-
-        # save as zarr and delete tmp_analyzer
-        logging.info("\tSaving SortingAnalyzer to zarr")
-        sorting_analyzer = sorting_analyzer.save_as(format="zarr", folder=postprocessing_output_folder)
-        try:
-            shutil.rmtree(scratch_folder / "tmp_analyzer")
-        except:
-            logging.info("Failed to delete temporary analyzer folder in scratch")
 
         t_postprocessing_end = time.perf_counter()
         elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
