@@ -23,7 +23,6 @@ from datetime import datetime, timedelta
 import spikeinterface as si
 import spikeinterface.preprocessing as spre
 import spikeinterface.postprocessing as spost
-import spikeinterface.qualitymetrics as sqm
 import spikeinterface.curation as sc
 
 from spikeinterface.core.core_tools import check_json
@@ -61,6 +60,20 @@ use_motion_corrected_group.add_argument(
 )
 use_motion_corrected_group.add_argument("--use-motion-corrected", action="store_true", help=use_motion_corrected_help)
 
+max_spikes_per_unit_group = parser.add_mutually_exclusive_group()
+max_spikes_per_unit_help = "Maximum number of spikes to keep per unit for the random_spikes extension"
+max_spikes_per_unit_group.add_argument(
+    "static_max_spikes_per_unit", nargs="?", default=None, help=max_spikes_per_unit_help
+)
+max_spikes_per_unit_group.add_argument("--max-spikes-per-unit", default=None, help=max_spikes_per_unit_help)
+
+additional_extensions_group = parser.add_mutually_exclusive_group()
+additional_extensions_help = "Additional extensions to compute (comma-separated). If 'all' or None, all extensions are computed"
+additional_extensions_group.add_argument(
+    "static_additional_extensions", nargs="?", default=None, help=additional_extensions_help
+)
+additional_extensions_group.add_argument("--additional-extensions", default=None, help=additional_extensions_help)
+
 n_jobs_group = parser.add_mutually_exclusive_group()
 n_jobs_help = (
     "Number of jobs to use for parallel processing. Default is 0.8 (all available cores). "
@@ -80,6 +93,10 @@ if __name__ == "__main__":
 
     N_JOBS = args.static_n_jobs or args.n_jobs
     N_JOBS = int(N_JOBS) if not N_JOBS.startswith("0.") else float(N_JOBS)
+    MAX_SPIKES_PER_UNIT = args.static_max_spikes_per_unit or args.max_spikes_per_unit
+    ADDITIONAL_EXTENSIONS = args.static_additional_extensions or args.additional_extensions
+    if isinstance(ADDITIONAL_EXTENSIONS, str) and ADDITIONAL_EXTENSIONS == "all":
+        ADDITIONAL_EXTENSIONS = None 
     PARAMS = args.params
 
     if PARAMS is not None:
@@ -94,9 +111,16 @@ if __name__ == "__main__":
                 raise ValueError(f"Invalid parameters: {PARAMS} is not a valid JSON string or file path")
         USE_MOTION_CORRECTED = postprocessing_params.pop("use_motion_corrected", False)
     else:
+        # Here is where the params.json files is loaded and parsed
         with open("params.json", "r") as f:
             postprocessing_params = json.load(f)
         USE_MOTION_CORRECTED = args.use_motion_corrected or args.static_use_motion_corrected == "true"
+
+        # Set the parsed value of max_spikes_per_unit in postprocessing_params
+        if MAX_SPIKES_PER_UNIT is not None:
+            postprocessing_params.setdefault("extensions", {}).setdefault("random_spikes", {})[
+                "max_spikes_per_unit"
+            ] = int(MAX_SPIKES_PER_UNIT)
 
     # Use CO_CPUS/N_JOBS_EXT env variable if available
     N_JOBS_EXT = os.getenv("CO_CPUS") or os.getenv("N_JOBS_EXT")
@@ -142,6 +166,8 @@ if __name__ == "__main__":
 
     logging.info(f"Running postprocessing with the following parameters:")
     logging.info(f"\tUSE_MOTION_CORRECTED: {USE_MOTION_CORRECTED}")
+    logging.info(f"\tMAX_SPIKES_PER_UNIT: {MAX_SPIKES_PER_UNIT}")
+    logging.info(f"\tADDITIONAL_EXTENSIONS: {ADDITIONAL_EXTENSIONS}")
     logging.info(f"\tN_JOBS: {N_JOBS}")
 
     data_process_prefix = "data_process_postprocessing"
@@ -272,7 +298,7 @@ if __name__ == "__main__":
         # this is needed to compute sparsity and some extensions that are needed for de-duplication
         # (e.g. random_spikes and templates)
         logging.info(f"\tCreating sorting analyzer")
-        return_in_uV = postprocessing_params.get("return_in_uV") or postprocessing_params.get("return_scaled")
+        return_in_uV = postprocessing_params.get("return_in_uV", True)
         sorting_analyzer_full = si.create_sorting_analyzer(
             sorting=sorting, recording=recording_bin, sparse=True, return_in_uV=return_in_uV, **sparsity_params
         )
@@ -324,8 +350,15 @@ if __name__ == "__main__":
         sorting_analyzer = si.create_sorting_analyzer(
             sorting=sorting_deduplicated,
             recording=recording,
+<<<<<<< HEAD
             format="zarr",
             folder=postprocessing_output_folder,
+=======
+            # format="zarr",
+            # folder=postprocessing_output_folder,
+            format="binary_folder",
+            folder=scratch_folder / "tmp_analyzer",
+>>>>>>> dev
             sparse=True,
             return_scaled=return_in_uV,
             sparsity=sparsity,
@@ -340,6 +373,19 @@ if __name__ == "__main__":
         # Now compute all extensions
         # quality metrics are computed separately at the end, for better logging and error handling
         quality_metrics_ext_params = extension_dict.pop("quality_metrics", None)
+
+        ALWAYS_COMPUTE = ["unit_locations", "correlograms", "noise_levels", "template_metrics", "template_similarity"]
+        ALWAYS_COMPUTE += required_extensions
+        if ADDITIONAL_EXTENSIONS is not None:
+            # remove all extensions not listed
+            additional_extensions = ADDITIONAL_EXTENSIONS.split(",")
+            for ext_name in list(extension_dict.keys()):
+                if ext_name in ALWAYS_COMPUTE:
+                    # always compute these
+                    continue
+                if ext_name not in additional_extensions:
+                    extension_dict.pop(ext_name)
+
 
         if len(extension_dict) > 0:
             logging.info(f"\tComputing postprocessing extensions: {list(extension_dict.keys())}")
