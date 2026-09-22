@@ -12,7 +12,7 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 import sys
 import numpy as np
 from pathlib import Path
-import shutil
+import 
 import json
 import argparse
 import time
@@ -350,15 +350,8 @@ if __name__ == "__main__":
         sorting_analyzer = si.create_sorting_analyzer(
             sorting=sorting_deduplicated,
             recording=recording,
-<<<<<<< HEAD
             format="zarr",
             folder=postprocessing_output_folder,
-=======
-            # format="zarr",
-            # folder=postprocessing_output_folder,
-            format="binary_folder",
-            folder=scratch_folder / "tmp_analyzer",
->>>>>>> dev
             sparse=True,
             return_scaled=return_in_uV,
             sparsity=sparsity,
