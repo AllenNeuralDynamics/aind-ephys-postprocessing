@@ -91,7 +91,8 @@ def run() -> None:
             postprocessing_params = json.load(f)
         USE_MOTION_CORRECTED = args.use_motion_corrected or args.static_use_motion_corrected == "true"
 
-    LOGGING = postprocessing_params.pop("logging", None)
+    # TODO: temporary - remove from params.json when logging is distributed by pipeline
+    LOGGING = postprocessing_params.get("logging", None)
 
     # Use CO_CPUS/N_JOBS_EXT env variable if available
     N_JOBS_EXT = os.getenv("CO_CPUS") or os.getenv("N_JOBS_EXT")
