@@ -27,6 +27,7 @@
             "dtype": null
         },
         "templates": {},
+        "amplitude_scalings": {},
         "spike_amplitudes": {
             "peak_sign": "neg"
         },
@@ -57,6 +58,7 @@
             "mode": "by_channel_local",
             "whiten": true
         },
+        "valid_unit_periods": {},
         "quality_metrics": {
             "metric_names": [
                 "num_spikes",
