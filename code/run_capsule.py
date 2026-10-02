@@ -204,8 +204,9 @@ if __name__ == "__main__":
                 config = json.load(f)
             recording_name = config["recording_name"]
             assert (
-                preprocessed_folder / f"preprocessed_{recording_name}"
-            ).is_dir(), f"Preprocessed folder for {recording_name} not found!"
+                (preprocessed_folder / f"preprocessed_{recording_name}").is_dir()
+                or (preprocessed_folder / f"binary_{recording_name}.json").is_file()
+            ), f"Preprocessed data for {recording_name} not found!"
             recording_names.append(recording_name)
     else:
         recording_names = [("_").join(p.name.split("_")[1:]) for p in preprocessed_folders]
