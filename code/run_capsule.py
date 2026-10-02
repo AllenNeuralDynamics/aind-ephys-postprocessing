@@ -74,6 +74,22 @@ additional_extensions_group.add_argument(
 )
 additional_extensions_group.add_argument("--additional-extensions", default=None, help=additional_extensions_help)
 
+# Bypass Always Compute extensions
+bypass_always_compute_extensions_group = parser.add_mutually_exclusive_group()
+bypass_always_compute_extensions_help = (
+    "If true, the always-computed extensions are not added; only the required "
+    "extensions (random_spikes, templates) and the additional extensions are computed."
+)
+bypass_always_compute_extensions_group.add_argument(
+    "static_bypass_always_compute_extensions", nargs="?", default="false",
+    help=bypass_always_compute_extensions_help,
+)
+bypass_always_compute_extensions_group.add_argument(
+    "--bypass-always-compute-extensions", action="store_true",
+    help=bypass_always_compute_extensions_help,
+)
+
+# N parallel workers
 n_jobs_group = parser.add_mutually_exclusive_group()
 n_jobs_help = (
     "Number of jobs to use for parallel processing. Default is 0.8 (all available cores). "
@@ -95,6 +111,10 @@ if __name__ == "__main__":
     N_JOBS = int(N_JOBS) if not N_JOBS.startswith("0.") else float(N_JOBS)
     MAX_SPIKES_PER_UNIT = args.static_max_spikes_per_unit or args.max_spikes_per_unit
     ADDITIONAL_EXTENSIONS = args.static_additional_extensions or args.additional_extensions
+    BYPASS_ALWAYS_COMPUTE_EXTENSIONS = (
+        args.bypass_always_compute_extensions
+        or (args.static_bypass_always_compute_extensions or "").strip().lower() == "true"
+    )
     if isinstance(ADDITIONAL_EXTENSIONS, str) and ADDITIONAL_EXTENSIONS == "all":
         ADDITIONAL_EXTENSIONS = None 
     PARAMS = args.params
@@ -168,6 +188,7 @@ if __name__ == "__main__":
     logging.info(f"\tUSE_MOTION_CORRECTED: {USE_MOTION_CORRECTED}")
     logging.info(f"\tMAX_SPIKES_PER_UNIT: {MAX_SPIKES_PER_UNIT}")
     logging.info(f"\tADDITIONAL_EXTENSIONS: {ADDITIONAL_EXTENSIONS}")
+    logging.info(f"\tBYPASS_ALWAYS_COMPUTE_EXTENSIONS: {BYPASS_ALWAYS_COMPUTE_EXTENSIONS}")
     logging.info(f"\tN_JOBS: {N_JOBS}")
 
     data_process_prefix = "data_process_postprocessing"
@@ -368,7 +389,10 @@ if __name__ == "__main__":
         # quality metrics are computed separately at the end, for better logging and error handling
         quality_metrics_ext_params = extension_dict.pop("quality_metrics", None)
 
-        ALWAYS_COMPUTE = ["unit_locations", "correlograms", "noise_levels", "template_metrics", "template_similarity"]
+        if BYPASS_ALWAYS_COMPUTE_EXTENSIONS:
+            ALWAYS_COMPUTE = []
+        else:
+            ALWAYS_COMPUTE = ["unit_locations", "correlograms", "noise_levels", "template_metrics", "template_similarity"]
         ALWAYS_COMPUTE += required_extensions
         if ADDITIONAL_EXTENSIONS is not None:
             # remove all extensions not listed
