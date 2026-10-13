@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-set -e
-
-# Installing SI from the #4708 to reduce waveforms memory footprint
-# 1f3629cac7676f0d4c10546d7512b5fd9da050bd
-pip install git+https://github.com/alejoe91/spikeinterface.git@1f3629cac7676f0d4c10546d7512b5fd9da050bd

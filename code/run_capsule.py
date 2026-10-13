@@ -322,7 +322,7 @@ if __name__ == "__main__":
         logging.info(f"\tCreating sorting analyzer")
         return_in_uV = postprocessing_params.get("return_in_uV", True)
         sorting_analyzer_full = si.create_sorting_analyzer(
-            sorting=sorting, recording=recording_bin, sparse=True, return_in_uV=return_in_uV, **sparsity_params
+            sorting=sorting, recording=recording_bin, sparse=True, return_in_uV=return_in_uV, lazy=True, **sparsity_params
         )
 
         # now postprocess
