@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -e
+
+# Fix issue with PCA compute on lazy analyzer #4861
+pip install git+https://github.com/alejoe91/spikeinterface.git@fb20222773f78f4c5f34444497883cca4574fa4e
