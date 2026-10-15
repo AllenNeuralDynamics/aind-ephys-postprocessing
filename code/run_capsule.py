@@ -9,27 +9,25 @@ import os
 # and let spikeinterface handle parallelization
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
-import sys
-import numpy as np
-from pathlib import Path
-import shutil
-import json
 import argparse
-import time
+import json
 import logging
+import shutil
+import sys
+import time
 from datetime import datetime, timedelta
+from pathlib import Path
+
+import numpy as np
 
 # SPIKEINTERFACE
 import spikeinterface as si
-import spikeinterface.preprocessing as spre
-import spikeinterface.postprocessing as spost
 import spikeinterface.curation as sc
-
-from spikeinterface.core.core_tools import check_json
+import spikeinterface.preprocessing as spre
+from aind_data_schema.components.identifiers import Code
 
 # AIND
 from aind_data_schema.core.processing import DataProcess, ProcessStage
-from aind_data_schema.components.identifiers import Code
 from aind_data_schema_models.process_names import ProcessName
 
 try:
@@ -56,23 +54,37 @@ use_motion_corrected_help = (
     "it applies motion interpolation to the recording prior to postprocessing."
 )
 use_motion_corrected_group.add_argument(
-    "static_use_motion_corrected", nargs="?", default="false", help=use_motion_corrected_help
+    "static_use_motion_corrected",
+    nargs="?",
+    default="false",
+    help=use_motion_corrected_help,
 )
-use_motion_corrected_group.add_argument("--use-motion-corrected", action="store_true", help=use_motion_corrected_help)
+use_motion_corrected_group.add_argument(
+    "--use-motion-corrected", action="store_true", help=use_motion_corrected_help
+)
 
 max_spikes_per_unit_group = parser.add_mutually_exclusive_group()
-max_spikes_per_unit_help = "Maximum number of spikes to keep per unit for the random_spikes extension"
+max_spikes_per_unit_help = (
+    "Maximum number of spikes to keep per unit for the random_spikes extension"
+)
 max_spikes_per_unit_group.add_argument(
     "static_max_spikes_per_unit", nargs="?", default=None, help=max_spikes_per_unit_help
 )
-max_spikes_per_unit_group.add_argument("--max-spikes-per-unit", default=None, help=max_spikes_per_unit_help)
+max_spikes_per_unit_group.add_argument(
+    "--max-spikes-per-unit", default=None, help=max_spikes_per_unit_help
+)
 
 additional_extensions_group = parser.add_mutually_exclusive_group()
 additional_extensions_help = "Additional extensions to compute (comma-separated). If 'all' or None, all extensions are computed"
 additional_extensions_group.add_argument(
-    "static_additional_extensions", nargs="?", default=None, help=additional_extensions_help
+    "static_additional_extensions",
+    nargs="?",
+    default=None,
+    help=additional_extensions_help,
 )
-additional_extensions_group.add_argument("--additional-extensions", default=None, help=additional_extensions_help)
+additional_extensions_group.add_argument(
+    "--additional-extensions", default=None, help=additional_extensions_help
+)
 
 # Bypass Always Compute extensions
 bypass_always_compute_extensions_group = parser.add_mutually_exclusive_group()
@@ -81,11 +93,14 @@ bypass_always_compute_extensions_help = (
     "extensions (random_spikes, templates) and the additional extensions are computed."
 )
 bypass_always_compute_extensions_group.add_argument(
-    "static_bypass_always_compute_extensions", nargs="?", default="false",
+    "static_bypass_always_compute_extensions",
+    nargs="?",
+    default="false",
     help=bypass_always_compute_extensions_help,
 )
 bypass_always_compute_extensions_group.add_argument(
-    "--bypass-always-compute-extensions", action="store_true",
+    "--bypass-always-compute-extensions",
+    action="store_true",
     help=bypass_always_compute_extensions_help,
 )
 
@@ -110,13 +125,16 @@ if __name__ == "__main__":
     N_JOBS = args.static_n_jobs or args.n_jobs
     N_JOBS = int(N_JOBS) if not N_JOBS.startswith("0.") else float(N_JOBS)
     MAX_SPIKES_PER_UNIT = args.static_max_spikes_per_unit or args.max_spikes_per_unit
-    ADDITIONAL_EXTENSIONS = args.static_additional_extensions or args.additional_extensions
+    ADDITIONAL_EXTENSIONS = (
+        args.static_additional_extensions or args.additional_extensions
+    )
     BYPASS_ALWAYS_COMPUTE_EXTENSIONS = (
         args.bypass_always_compute_extensions
-        or (args.static_bypass_always_compute_extensions or "").strip().lower() == "true"
+        or (args.static_bypass_always_compute_extensions or "").strip().lower()
+        == "true"
     )
     if isinstance(ADDITIONAL_EXTENSIONS, str) and ADDITIONAL_EXTENSIONS == "all":
-        ADDITIONAL_EXTENSIONS = None 
+        ADDITIONAL_EXTENSIONS = None
     PARAMS = args.params
 
     if PARAMS is not None:
@@ -128,33 +146,37 @@ if __name__ == "__main__":
                 with open(PARAMS, "r") as f:
                     postprocessing_params = json.load(f)
             else:
-                raise ValueError(f"Invalid parameters: {PARAMS} is not a valid JSON string or file path")
+                raise ValueError(
+                    f"Invalid parameters: {PARAMS} is not a valid JSON string or file path"
+                )
         USE_MOTION_CORRECTED = postprocessing_params.pop("use_motion_corrected", False)
     else:
         # Here is where the params.json files is loaded and parsed
         with open("params.json", "r") as f:
             postprocessing_params = json.load(f)
-        USE_MOTION_CORRECTED = args.use_motion_corrected or args.static_use_motion_corrected == "true"
+        USE_MOTION_CORRECTED = (
+            args.use_motion_corrected or args.static_use_motion_corrected == "true"
+        )
 
         # Set the parsed value of max_spikes_per_unit in postprocessing_params
         if MAX_SPIKES_PER_UNIT is not None:
-            postprocessing_params.setdefault("extensions", {}).setdefault("random_spikes", {})[
-                "max_spikes_per_unit"
-            ] = int(MAX_SPIKES_PER_UNIT)
+            postprocessing_params.setdefault("extensions", {}).setdefault(
+                "random_spikes", {}
+            )["max_spikes_per_unit"] = int(MAX_SPIKES_PER_UNIT)
 
     # Use CO_CPUS/N_JOBS_EXT env variable if available
     N_JOBS_EXT = os.getenv("CO_CPUS") or os.getenv("N_JOBS_EXT")
     if N_JOBS_EXT is not None:
         if isinstance(N_JOBS, float):
             N_JOBS = int(N_JOBS * int(N_JOBS_EXT))
-        elif N_JOBS == -1:
-            N_JOBS = int(N_JOBS_EXT)
-        elif int(N_JOBS_EXT) < N_JOBS:
+        elif N_JOBS == -1 or int(N_JOBS_EXT) < N_JOBS:
             N_JOBS = int(N_JOBS_EXT)
 
     # setup AIND logging before any other logging call
     ecephys_session_folders = [
-        p for p in data_folder.iterdir() if "ecephys" in p.name.lower() or "behavior" in p.name.lower()
+        p
+        for p in data_folder.iterdir()
+        if "ecephys" in p.name.lower() or "behavior" in p.name.lower()
     ]
     ecephys_session_folder = None
     aind_log_setup = False
@@ -184,11 +206,13 @@ if __name__ == "__main__":
     if not aind_log_setup:
         logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(message)s")
 
-    logging.info(f"Running postprocessing with the following parameters:")
+    logging.info("Running postprocessing with the following parameters:")
     logging.info(f"\tUSE_MOTION_CORRECTED: {USE_MOTION_CORRECTED}")
     logging.info(f"\tMAX_SPIKES_PER_UNIT: {MAX_SPIKES_PER_UNIT}")
     logging.info(f"\tADDITIONAL_EXTENSIONS: {ADDITIONAL_EXTENSIONS}")
-    logging.info(f"\tBYPASS_ALWAYS_COMPUTE_EXTENSIONS: {BYPASS_ALWAYS_COMPUTE_EXTENSIONS}")
+    logging.info(
+        f"\tBYPASS_ALWAYS_COMPUTE_EXTENSIONS: {BYPASS_ALWAYS_COMPUTE_EXTENSIONS}"
+    )
     logging.info(f"\tN_JOBS: {N_JOBS}")
 
     data_process_prefix = "data_process_postprocessing"
@@ -205,17 +229,25 @@ if __name__ == "__main__":
 
     # check if test
     if (data_folder / "preprocessing_pipeline_output_test").is_dir():
-        logging.info("\n*******************\n**** TEST MODE ****\n*******************\n")
+        logging.info(
+            "\n*******************\n**** TEST MODE ****\n*******************\n"
+        )
         preprocessed_folder = data_folder / "preprocessing_pipeline_output_test"
         spikesorted_folder = data_folder / "spikesorting_pipeline_output_test"
     else:
         preprocessed_folder = data_folder
         spikesorted_folder = data_folder
 
-    preprocessed_folders = [p for p in preprocessed_folder.iterdir() if p.is_dir() and "preprocessed_" in p.name]
+    preprocessed_folders = [
+        p
+        for p in preprocessed_folder.iterdir()
+        if p.is_dir() and "preprocessed_" in p.name
+    ]
 
     # load job json files
-    job_config_json_files = [p for p in data_folder.iterdir() if p.suffix == ".json" and "job" in p.name]
+    job_config_json_files = [
+        p for p in data_folder.iterdir() if p.suffix == ".json" and "job" in p.name
+    ]
     logging.info(f"Found {len(job_config_json_files)} json configurations")
 
     if len(job_config_json_files) > 0:
@@ -225,41 +257,58 @@ if __name__ == "__main__":
                 config = json.load(f)
             recording_name = config["recording_name"]
             assert (
-                (preprocessed_folder / f"preprocessed_{recording_name}").is_dir()
-                or (preprocessed_folder / f"binary_{recording_name}.json").is_file()
-            ), f"Preprocessed data for {recording_name} not found!"
+                preprocessed_folder / f"preprocessed_{recording_name}"
+            ).is_dir() or (
+                preprocessed_folder / f"binary_{recording_name}.json"
+            ).is_file(), f"Preprocessed data for {recording_name} not found!"
             recording_names.append(recording_name)
     else:
-        recording_names = [("_").join(p.name.split("_")[1:]) for p in preprocessed_folders]
+        recording_names = [
+            ("_").join(p.name.split("_")[1:]) for p in preprocessed_folders
+        ]
 
     for recording_name in recording_names:
         datetime_start_postprocessing = datetime.now()
         t_postprocessing_start = time.perf_counter()
         postprocessing_notes = ""
         binary_json_file = preprocessed_folder / f"binary_{recording_name}.json"
-        preprocessed_json_file = preprocessed_folder / f"preprocessed_{recording_name}.json"
+        preprocessed_json_file = (
+            preprocessed_folder / f"preprocessed_{recording_name}.json"
+        )
         motion_corrected_folder = preprocessed_folder / f"motion_{recording_name}"
 
         logging.info(f"\tProcessing {recording_name}")
-        postprocessing_output_process_json = results_folder / f"{data_process_prefix}_{recording_name}.json"
-        postprocessing_output_folder = results_folder / f"postprocessed_{recording_name}.zarr"
+        postprocessing_output_process_json = (
+            results_folder / f"{data_process_prefix}_{recording_name}.json"
+        )
+        postprocessing_output_folder = (
+            results_folder / f"postprocessed_{recording_name}.zarr"
+        )
 
         try:
             recording_bin = None
             if binary_json_file.is_file():
-                recording_bin = si.load(binary_json_file, base_folder=preprocessed_folder)
-                logging.info(f"\tLoaded binary recording from JSON")
+                recording_bin = si.load(
+                    binary_json_file, base_folder=preprocessed_folder
+                )
+                logging.info("\tLoaded binary recording from JSON")
             else:
-                recording_bin = si.load(preprocessed_folder / f"preprocessed_{recording_name}")
+                recording_bin = si.load(
+                    preprocessed_folder / f"preprocessed_{recording_name}"
+                )
             recording_lazy = None
             try:
                 if preprocessed_json_file.is_file():
-                    logging.info(f"\tLoading lazy recording from JSON")
-                    recording_lazy = si.load(preprocessed_json_file, base_folder=data_folder)
+                    logging.info("\tLoading lazy recording from JSON")
+                    recording_lazy = si.load(
+                        preprocessed_json_file, base_folder=data_folder
+                    )
             except:
                 logging.info("Could not load lazy preprocessed recording")
-        except Exception as e:
-            logging.info(f"Spike sorting skipped on {recording_name}. Skipping postprocessing")
+        except Exception:
+            logging.info(
+                f"Spike sorting skipped on {recording_name}. Skipping postprocessing"
+            )
             # create an empty result file (needed for pipeline)
             postprocessing_output_folder.mkdir()
             mock_array = np.array([], dtype=bool)
@@ -276,11 +325,15 @@ if __name__ == "__main__":
             if not isinstance(recording, InterpolateMotionRecording):
                 logging.info("\t\tApplying motion interpolation")
                 motion_info = spre.load_motion_info(motion_corrected_folder)
-                interpolate_motion_kwargs = motion_info["parameters"]["interpolate_motion_kwargs"]
+                interpolate_motion_kwargs = motion_info["parameters"][
+                    "interpolate_motion_kwargs"
+                ]
                 recording_bin_f = spre.astype(recording_bin, "float32")
 
                 recording_bin = interpolate_motion(
-                    recording_bin_f, motion=motion_info["motion"], **interpolate_motion_kwargs
+                    recording_bin_f,
+                    motion=motion_info["motion"],
+                    **interpolate_motion_kwargs,
                 )
                 # InterpolateMotion is not compatible with times.
                 # Removing time info for postprocessing
@@ -291,7 +344,9 @@ if __name__ == "__main__":
                 if recording_lazy is not None:
                     recording_lazy_f = spre.astype(recording_bin, "float32")
                     recording_lazy = interpolate_motion(
-                        recording_lazy_f, motion=motion_info["motion"], **interpolate_motion_kwargs
+                        recording_lazy_f,
+                        motion=motion_info["motion"],
+                        **interpolate_motion_kwargs,
                     )
                     # InterpolateMotion is not compatible with times.
                     # Removing time info for postprocessing
@@ -304,12 +359,16 @@ if __name__ == "__main__":
         # make sure we have spikesorted output for the block-stream
         sorted_folder = spikesorted_folder / f"spikesorted_{recording_name}"
         if not sorted_folder.is_dir():
-            raise FileNotFoundError(f"Spike sorted data for {recording_name} not found!")
+            raise FileNotFoundError(
+                f"Spike sorted data for {recording_name} not found!"
+            )
 
         try:
             sorting = si.load(sorted_folder)
-        except Exception as e:
-            logging.info(f"Spike sorting failed on {recording_name}. Skipping postprocessing")
+        except Exception:
+            logging.info(
+                f"Spike sorting failed on {recording_name}. Skipping postprocessing"
+            )
             # create an empty result file (needed for pipeline)
             postprocessing_output_folder.mkdir()
             mock_array = np.array([], dtype=bool)
@@ -319,10 +378,15 @@ if __name__ == "__main__":
         # First, we create a full sorting analyzer with the binary recording and all units,
         # this is needed to compute sparsity and some extensions that are needed for de-duplication
         # (e.g. random_spikes and templates)
-        logging.info(f"\tCreating sorting analyzer")
+        logging.info("\tCreating sorting analyzer")
         return_in_uV = postprocessing_params.get("return_in_uV", True)
         sorting_analyzer_full = si.create_sorting_analyzer(
-            sorting=sorting, recording=recording_bin, sparse=True, return_in_uV=return_in_uV, lazy=True, **sparsity_params
+            sorting=sorting,
+            recording=recording_bin,
+            sparse=True,
+            return_in_uV=return_in_uV,
+            lazy=True,
+            **sparsity_params,
         )
 
         # now postprocess
@@ -333,17 +397,22 @@ if __name__ == "__main__":
                 raise ValueError(
                     f"'{req}' extension is required postprocessing and downstream steps, but not found in parameters"
                 )
-        extensions_for_duplication = {ext: extension_dict[ext] for ext in required_extensions}
+        extensions_for_duplication = {
+            ext: extension_dict[ext] for ext in required_extensions
+        }
         if postprocessing_params.get("duplicate_threshold") is not None:
             sorting_analyzer_full.compute(extensions_for_duplication)
             sorting_deduplicated = sc.remove_redundant_units(
-                sorting_analyzer_full, duplicate_threshold=postprocessing_params["duplicate_threshold"]
+                sorting_analyzer_full,
+                duplicate_threshold=postprocessing_params["duplicate_threshold"],
             )
             logging.info(
                 f"\tNumber of original units: {len(sorting.unit_ids)} -- "
                 f"Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}"
             )
-            n_duplicated = int(len(sorting.unit_ids) - len(sorting_deduplicated.unit_ids))
+            n_duplicated = int(
+                len(sorting.unit_ids) - len(sorting_deduplicated.unit_ids)
+            )
             postprocessing_notes += f"\n- Removed {n_duplicated} duplicated units.\n"
             deduplicated_unit_ids = sorting_deduplicated.unit_ids
             deduplicated_unit_indices = sorting.ids_to_indices(deduplicated_unit_ids)
@@ -355,7 +424,7 @@ if __name__ == "__main__":
                 unit_ids=deduplicated_unit_ids,
             )
         else:
-            logging.info(f"\tSkipping de-duplication")
+            logging.info("\tSkipping de-duplication")
             sorting_deduplicated = sorting
             sparsity = sorting_analyzer_full.sparsity
             n_duplicated = 0
@@ -377,12 +446,12 @@ if __name__ == "__main__":
             sparse=True,
             return_scaled=return_in_uV,
             sparsity=sparsity,
-            lazy=True
+            lazy=True,
         )
         del sorting_analyzer_full
 
         if recording_tmp is not None:
-            logging.info(f"\tSetting temporary binary recording")
+            logging.info("\tSetting temporary binary recording")
             sorting_analyzer.set_temporary_recording(recording_tmp)
 
         # Now compute all extensions
@@ -392,7 +461,13 @@ if __name__ == "__main__":
         if BYPASS_ALWAYS_COMPUTE_EXTENSIONS:
             ALWAYS_COMPUTE = []
         else:
-            ALWAYS_COMPUTE = ["unit_locations", "correlograms", "noise_levels", "template_metrics", "template_similarity"]
+            ALWAYS_COMPUTE = [
+                "unit_locations",
+                "correlograms",
+                "noise_levels",
+                "template_metrics",
+                "template_similarity",
+            ]
         ALWAYS_COMPUTE += required_extensions
         if ADDITIONAL_EXTENSIONS is not None:
             # remove all extensions not listed
@@ -404,17 +479,22 @@ if __name__ == "__main__":
                 if ext_name not in additional_extensions:
                     extension_dict.pop(ext_name)
 
-
         if len(extension_dict) > 0:
-            logging.info(f"\tComputing postprocessing extensions: {list(extension_dict.keys())}")
+            logging.info(
+                f"\tComputing postprocessing extensions: {list(extension_dict.keys())}"
+            )
             sorting_analyzer.compute(extension_dict)
 
         if quality_metrics_ext_params is not None:
             logging.info("\tComputing quality metrics")
-            _ = sorting_analyzer.compute("quality_metrics", **quality_metrics_ext_params)
+            _ = sorting_analyzer.compute(
+                "quality_metrics", **quality_metrics_ext_params
+            )
 
         t_postprocessing_end = time.perf_counter()
-        elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
+        elapsed_time_postprocessing = np.round(
+            t_postprocessing_end - t_postprocessing_start, 2
+        )
 
         # save params in output
         postprocessing_params["recording_name"] = recording_name
@@ -427,11 +507,12 @@ if __name__ == "__main__":
             experimenters=["AIND Pipeline"],
             code=Code(
                 url=URL,
-                version=VERSION, # either release or git commit
-                parameters=postprocessing_params
+                version=VERSION,  # either release or git commit
+                parameters=postprocessing_params,
             ),
             start_date_time=datetime_start_postprocessing,
-            end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
+            end_date_time=datetime_start_postprocessing
+            + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
             output_path=str(results_folder),
             output_parameters=postprocessing_outputs,
             notes=postprocessing_notes,
@@ -441,11 +522,22 @@ if __name__ == "__main__":
 
         # copy data_description and subject json
         if ecephys_session_folder is not None:
-            metadata_json_files = [p for p in ecephys_session_folder.iterdir() if p.suffix == ".json"]
+            metadata_json_files = [
+                p for p in ecephys_session_folder.iterdir() if p.suffix == ".json"
+            ]
             for metadata_file in metadata_json_files:
-                if "data_description" in metadata_file.name or "subject" in metadata_file.name:
-                    shutil.copy(metadata_file, results_folder / f"postprocessing_{recording_name}_{metadata_file.name}")
+                if (
+                    "data_description" in metadata_file.name
+                    or "subject" in metadata_file.name
+                ):
+                    shutil.copy(
+                        metadata_file,
+                        results_folder
+                        / f"postprocessing_{recording_name}_{metadata_file.name}",
+                    )
 
     t_postprocessing_end_all = time.perf_counter()
-    elapsed_time_postprocessing_all = np.round(t_postprocessing_end_all - t_postprocessing_start_all, 2)
+    elapsed_time_postprocessing_all = np.round(
+        t_postprocessing_end_all - t_postprocessing_start_all, 2
+    )
     logging.info(f"POSTPROCESSING time: {elapsed_time_postprocessing_all}s")
