@@ -220,7 +220,7 @@ def run() -> None:
         t_postprocessing_start = time.perf_counter()
         postprocessing_notes = ""
         binary_json_file = preprocessed_folder / f"binary_{recording_name}.json"
-        preprocessed_json_file = preprocessed_folder / f"preprocessed_{recording_name}.json"
+        preprocessed_stem = f"preprocessed_{recording_name}"
         motion_corrected_folder = preprocessed_folder / f"motion_{recording_name}"
 
         logging.info(f"\tProcessing {recording_name}")
@@ -235,14 +235,19 @@ def run() -> None:
             else:
                 recording_bin = si.load(preprocessed_folder / f"preprocessed_{recording_name}")
             recording_lazy = None
-            try:
-                if preprocessed_json_file.is_file():
-                    logging.info(f"\tLoading lazy recording from JSON")
-                    recording_lazy = si.load(preprocessed_json_file, base_folder=data_folder)
-            except:
-                logging.info("Could not load lazy preprocessed recording")
+            for suffix in [".json", ".pkl"]:
+                preprocessed_file = preprocessed_folder / f"{preprocessed_stem}{suffix}"
+                if preprocessed_file.is_file():
+                    try:
+                        recording_lazy = si.load(preprocessed_file, base_folder=data_folder)
+                        logging.info(f"\tLoaded lazy recording from {suffix[1:]}")
+                        break
+                    except:
+                        pass
+            if recording_lazy is None:
+                logging.info("\tCould not load lazy preprocessed recording")
         except Exception as e:
-            logging.info(f"Spike sorting skipped on {recording_name}. Skipping postprocessing")
+            logging.info(f"Spike sorting skipped on {recording_name}. Skipping postprocessing.")
             # create an empty result file (needed for pipeline)
             postprocessing_output_folder.mkdir()
             mock_array = np.array([], dtype=bool)
