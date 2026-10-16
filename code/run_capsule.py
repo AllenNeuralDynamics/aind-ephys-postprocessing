@@ -245,7 +245,7 @@ def run() -> None:
                     except:
                         pass
             if recording_lazy is None:
-                logging.info("Could not load lazy preprocessed recording")
+                logging.info("\tCould not load lazy preprocessed recording")
         except Exception as e:
             logging.info(f"Spike sorting skipped on {recording_name}. Skipping postprocessing.")
             # create an empty result file (needed for pipeline)
