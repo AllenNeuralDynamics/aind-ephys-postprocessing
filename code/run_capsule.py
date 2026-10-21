@@ -14,7 +14,9 @@ import json
 import logging
 import shutil
 import sys
+import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -25,6 +27,7 @@ import spikeinterface as si
 import spikeinterface.curation as sc
 import spikeinterface.preprocessing as spre
 from aind_data_schema.components.identifiers import Code
+from spikeinterface.core.sortinganalyzer import get_extension_class
 
 # AIND
 from aind_data_schema.core.processing import DataProcess, ProcessStage
@@ -44,6 +47,49 @@ VERSION = "1.0"
 data_folder = Path("../data/")
 scratch_folder = Path("../scratch")
 results_folder = Path("../results/")
+
+# Minutes between progress lines while a step runs
+HEARTBEAT_MIN = 10
+
+
+def _rss_gb() -> float | None:
+    """Resident memory of this process in GB (Linux), or None."""
+    try:
+        for line in Path("/proc/self/status").read_text().splitlines():
+            if line.startswith("VmRSS:"):
+                return int(line.split()[1]) / 1e6
+    except OSError:
+        pass
+    return None
+
+
+def _ram() -> str:
+    rss = _rss_gb()
+    return f"RAM: {rss:.1f} GB" if rss is not None else ""
+
+
+@contextmanager
+def logged_step(name: str):
+    """Log the start and duration of a step, with a heartbeat while it runs."""
+    logging.info(f"\t{name} ...  {_ram()}")
+    t_start = time.perf_counter()
+    stop = threading.Event()
+
+    def heartbeat():
+        while not stop.wait(HEARTBEAT_MIN * 60):
+            elapsed = (time.perf_counter() - t_start) / 60
+            logging.info(f"\t  [heartbeat] {name}: {elapsed:.0f} min  {_ram()}")
+
+    thread = threading.Thread(target=heartbeat, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join()
+    logging.info(
+        f"\t{name} done ({(time.perf_counter() - t_start) / 60:.1f} min)  {_ram()}"
+    )
 
 # Define argument parser
 parser = argparse.ArgumentParser(description="Postprocess ecephys data")
@@ -288,14 +334,15 @@ if __name__ == "__main__":
         try:
             recording_bin = None
             if binary_json_file.is_file():
-                recording_bin = si.load(
-                    binary_json_file, base_folder=preprocessed_folder
-                )
-                logging.info("\tLoaded binary recording from JSON")
+                with logged_step("Loading binary recording from JSON"):
+                    recording_bin = si.load(
+                        binary_json_file, base_folder=preprocessed_folder
+                    )
             else:
                 recording_bin = si.load(
                     preprocessed_folder / f"preprocessed_{recording_name}"
                 )
+            logging.info(f"\t{recording_bin}")
             recording_lazy = None
             try:
                 if preprocessed_json_file.is_file():
@@ -364,7 +411,12 @@ if __name__ == "__main__":
             )
 
         try:
-            sorting = si.load(sorted_folder)
+            with logged_step("Loading sorting"):
+                sorting = si.load(sorted_folder)
+            logging.info(
+                f"\tSorting: {len(sorting.unit_ids)} units, "
+                f"{sorting.to_spike_vector().size:,} spikes"
+            )
         except Exception:
             logging.info(
                 f"Spike sorting failed on {recording_name}. Skipping postprocessing"
@@ -378,16 +430,18 @@ if __name__ == "__main__":
         # First, we create a full sorting analyzer with the binary recording and all units,
         # this is needed to compute sparsity and some extensions that are needed for de-duplication
         # (e.g. random_spikes and templates)
-        logging.info("\tCreating sorting analyzer")
         return_in_uV = postprocessing_params.get("return_in_uV", True)
-        sorting_analyzer_full = si.create_sorting_analyzer(
-            sorting=sorting,
-            recording=recording_bin,
-            sparse=True,
-            return_in_uV=return_in_uV,
-            lazy=True,
-            **sparsity_params,
-        )
+        if "main_channel_id" in sorting.get_property_keys():
+            logging.info("\tUsing the sorting's main_channel_id: no traces read for sparsity")
+        with logged_step("Creating sorting analyzer"):
+            sorting_analyzer_full = si.create_sorting_analyzer(
+                sorting=sorting,
+                recording=recording_bin,
+                sparse=True,
+                return_in_uV=return_in_uV,
+                lazy=True,
+                **sparsity_params,
+            )
 
         # now postprocess
         extension_dict = postprocessing_params.get("extensions", {})
@@ -401,11 +455,13 @@ if __name__ == "__main__":
             ext: extension_dict[ext] for ext in required_extensions
         }
         if postprocessing_params.get("duplicate_threshold") is not None:
-            sorting_analyzer_full.compute(extensions_for_duplication)
-            sorting_deduplicated = sc.remove_redundant_units(
-                sorting_analyzer_full,
-                duplicate_threshold=postprocessing_params["duplicate_threshold"],
-            )
+            with logged_step("De-duplication: random_spikes and templates"):
+                sorting_analyzer_full.compute(extensions_for_duplication)
+            with logged_step("De-duplication: removing redundant units"):
+                sorting_deduplicated = sc.remove_redundant_units(
+                    sorting_analyzer_full,
+                    duplicate_threshold=postprocessing_params["duplicate_threshold"],
+                )
             logging.info(
                 f"\tNumber of original units: {len(sorting.unit_ids)} -- "
                 f"Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}"
@@ -438,16 +494,17 @@ if __name__ == "__main__":
 
         # Create a sorting analyzer in binary_folder in scratch
         # this prevents issues with shared memory sizes
-        sorting_analyzer = si.create_sorting_analyzer(
-            sorting=sorting_deduplicated,
-            recording=recording,
-            format="zarr",
-            folder=postprocessing_output_folder,
-            sparse=True,
-            return_scaled=return_in_uV,
-            sparsity=sparsity,
-            lazy=True,
-        )
+        with logged_step("Creating zarr sorting analyzer"):
+            sorting_analyzer = si.create_sorting_analyzer(
+                sorting=sorting_deduplicated,
+                recording=recording,
+                format="zarr",
+                folder=postprocessing_output_folder,
+                sparse=True,
+                return_scaled=return_in_uV,
+                sparsity=sparsity,
+                lazy=True,
+            )
         del sorting_analyzer_full
 
         if recording_tmp is not None:
@@ -483,13 +540,33 @@ if __name__ == "__main__":
             logging.info(
                 f"\tComputing postprocessing extensions: {list(extension_dict.keys())}"
             )
-            sorting_analyzer.compute(extension_dict)
+            # One at a time for per-extension logging, in params order (parents
+            # first). Extensions that share one pass over the traces (node
+            # pipeline, e.g. spike_amplitudes and spike_locations) stay together
+            # at the position of the first of them, so the recording is read once.
+            pipeline_names = [
+                name
+                for name in extension_dict
+                if get_extension_class(name).use_nodepipeline
+            ]
+            batches = []
+            for name in extension_dict:
+                if name in pipeline_names:
+                    if name == pipeline_names[0]:
+                        batches.append(pipeline_names)
+                else:
+                    batches.append([name])
+            for batch in batches:
+                with logged_step(f"Computing {', '.join(batch)}"):
+                    sorting_analyzer.compute(
+                        {name: extension_dict[name] for name in batch}
+                    )
 
         if quality_metrics_ext_params is not None:
-            logging.info("\tComputing quality metrics")
-            _ = sorting_analyzer.compute(
-                "quality_metrics", **quality_metrics_ext_params
-            )
+            with logged_step("Computing quality metrics"):
+                _ = sorting_analyzer.compute(
+                    "quality_metrics", **quality_metrics_ext_params
+                )
 
         t_postprocessing_end = time.perf_counter()
         elapsed_time_postprocessing = np.round(
