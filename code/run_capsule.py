@@ -10,6 +10,7 @@ import os
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 import argparse
+import gc
 import json
 import logging
 import shutil
@@ -66,6 +67,21 @@ def _rss_gb() -> float | None:
 def _ram() -> str:
     rss = _rss_gb()
     return f"RAM: {rss:.1f} GB" if rss is not None else ""
+
+
+def load_sorting(folder: Path) -> si.BaseSorting:
+    """Load a spike-sorted folder, memory-mapping numpy-folder spike vectors.
+
+    si.load() reads the whole spikes.npy into RAM (~117 GB for 5 billion spikes);
+    memory-mapped, it stays on disk and pages are read as needed.
+    """
+    if (folder / "spikes.npy").is_file() and (folder / "numpysorting_info.json").is_file():
+        try:
+            return si.NumpyFolderSorting(folder, mmap_mode="r")
+        except TypeError:
+            # SpikeInterface without mmap_mode
+            pass
+    return si.load(folder)
 
 
 @contextmanager
@@ -412,7 +428,7 @@ if __name__ == "__main__":
 
         try:
             with logged_step("Loading sorting"):
-                sorting = si.load(sorted_folder)
+                sorting = load_sorting(sorted_folder)
             logging.info(
                 f"\tSorting: {len(sorting.unit_ids)} units, "
                 f"{sorting.to_spike_vector().size:,} spikes"
@@ -427,21 +443,10 @@ if __name__ == "__main__":
             np.save(postprocessing_output_folder / "placeholder.npy", mock_array)
             continue
 
-        # First, we create a full sorting analyzer with the binary recording and all units,
-        # this is needed to compute sparsity and some extensions that are needed for de-duplication
-        # (e.g. random_spikes and templates)
         return_in_uV = postprocessing_params.get("return_in_uV", True)
-        if "main_channel_id" in sorting.get_property_keys():
+        has_main_channels = "main_channel_id" in sorting.get_property_keys()
+        if has_main_channels:
             logging.info("\tUsing the sorting's main_channel_id: no traces read for sparsity")
-        with logged_step("Creating sorting analyzer"):
-            sorting_analyzer_full = si.create_sorting_analyzer(
-                sorting=sorting,
-                recording=recording_bin,
-                sparse=True,
-                return_in_uV=return_in_uV,
-                lazy=True,
-                **sparsity_params,
-            )
 
         # now postprocess
         extension_dict = postprocessing_params.get("extensions", {})
@@ -454,7 +459,20 @@ if __name__ == "__main__":
         extensions_for_duplication = {
             ext: extension_dict[ext] for ext in required_extensions
         }
+        sorting_analyzer_full = None
         if postprocessing_params.get("duplicate_threshold") is not None:
+            # A full sorting analyzer with the binary recording and all units, for
+            # sparsity and the extensions de-duplication needs (random_spikes and
+            # templates). In memory it holds a full copy of the spike vector.
+            with logged_step("Creating sorting analyzer"):
+                sorting_analyzer_full = si.create_sorting_analyzer(
+                    sorting=sorting,
+                    recording=recording_bin,
+                    sparse=True,
+                    return_in_uV=return_in_uV,
+                    lazy=True,
+                    **sparsity_params,
+                )
             with logged_step("De-duplication: random_spikes and templates"):
                 sorting_analyzer_full.compute(extensions_for_duplication)
             with logged_step("De-duplication: removing redundant units"):
@@ -482,8 +500,22 @@ if __name__ == "__main__":
         else:
             logging.info("\tSkipping de-duplication")
             sorting_deduplicated = sorting
-            sparsity = sorting_analyzer_full.sparsity
             n_duplicated = 0
+            # Sparsity directly, without an in-memory analyzer (and its copy of
+            # the spike vector). With main channels and the radius method, no
+            # traces are read.
+            main_channel_indices = (
+                recording_bin.ids_to_indices(sorting.get_property("main_channel_id"))
+                if has_main_channels
+                else None
+            )
+            with logged_step("Estimating sparsity"):
+                sparsity = si.estimate_sparsity(
+                    sorting,
+                    recording_bin,
+                    main_channel_indices=main_channel_indices,
+                    **sparsity_params,
+                )
 
         if recording_lazy is not None:
             recording = recording_lazy
@@ -505,7 +537,10 @@ if __name__ == "__main__":
                 sparsity=sparsity,
                 lazy=True,
             )
-        del sorting_analyzer_full
+        # The zarr analyzer reads its own copy of the sorting: free the original
+        del sorting_analyzer_full, sorting, sorting_deduplicated
+        gc.collect()
+        logging.info(f"\tReleased the loaded sorting  {_ram()}")
 
         if recording_tmp is not None:
             logging.info("\tSetting temporary binary recording")
