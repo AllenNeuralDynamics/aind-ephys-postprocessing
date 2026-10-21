@@ -368,9 +368,10 @@ if __name__ == "__main__":
                     )
             except:
                 logging.info("Could not load lazy preprocessed recording")
-        except Exception:
+        except Exception as e:
             logging.info(
-                f"Spike sorting skipped on {recording_name}. Skipping postprocessing"
+                f"Spike sorting skipped on {recording_name}. Skipping postprocessing "
+                f"(could not load the recording: {type(e).__name__}: {e})"
             )
             # create an empty result file (needed for pipeline)
             postprocessing_output_folder.mkdir()
@@ -433,9 +434,10 @@ if __name__ == "__main__":
                 f"\tSorting: {len(sorting.unit_ids)} units, "
                 f"{sorting.to_spike_vector().size:,} spikes"
             )
-        except Exception:
+        except Exception as e:
             logging.info(
-                f"Spike sorting failed on {recording_name}. Skipping postprocessing"
+                f"Spike sorting failed on {recording_name}. Skipping postprocessing "
+                f"(could not load the sorting: {type(e).__name__}: {e})"
             )
             # create an empty result file (needed for pipeline)
             postprocessing_output_folder.mkdir()
