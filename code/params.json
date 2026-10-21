@@ -8,7 +8,7 @@
         "method": "radius",
         "radius_um": 100
     },
-    "duplicate_threshold": 0.9,
+    "duplicate_threshold": null,
     "return_in_uV": true,
     "extensions": {
         "random_spikes": {
