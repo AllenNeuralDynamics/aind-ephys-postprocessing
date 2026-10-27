@@ -14,7 +14,6 @@ import numpy as np
 from pathlib import Path
 import shutil
 import json
-import argparse
 import time
 import logging
 from datetime import datetime, timedelta
@@ -38,85 +37,28 @@ VERSION = os.getenv("CODE_VERSION", "1.0")
 data_folder = Path("../data/")
 scratch_folder = Path("../scratch")
 results_folder = Path("../results/")
-
-# Define argument parser
-parser = argparse.ArgumentParser(description="Postprocess ecephys data")
-
-use_motion_corrected_group = parser.add_mutually_exclusive_group()
-use_motion_corrected_help = (
-    "If True and motion corrected has been computed (and not applied), "
-    "it applies motion interpolation to the recording prior to postprocessing."
-)
-use_motion_corrected_group.add_argument(
-    "static_use_motion_corrected", nargs="?", default="false", help=use_motion_corrected_help
-)
-use_motion_corrected_group.add_argument("--use-motion-corrected", action="store_true", help=use_motion_corrected_help)
-
-max_spikes_per_unit_group = parser.add_mutually_exclusive_group()
-max_spikes_per_unit_help = "Maximum number of spikes to keep per unit for the random_spikes extension"
-max_spikes_per_unit_group.add_argument(
-    "static_max_spikes_per_unit", nargs="?", default=None, help=max_spikes_per_unit_help
-)
-max_spikes_per_unit_group.add_argument("--max-spikes-per-unit", default=None, help=max_spikes_per_unit_help)
-
-additional_extensions_group = parser.add_mutually_exclusive_group()
-additional_extensions_help = "Additional extensions to compute (comma-separated). If 'all' or None, all extensions are computed"
-additional_extensions_group.add_argument(
-    "static_additional_extensions", nargs="?", default=None, help=additional_extensions_help
-)
-additional_extensions_group.add_argument("--additional-extensions", default=None, help=additional_extensions_help)
-
-n_jobs_group = parser.add_mutually_exclusive_group()
-n_jobs_help = (
-    "Number of jobs to use for parallel processing. Default is 0.8 (all available cores). "
-    "It can also be a float between 0 and 1 to use a fraction of available cores"
-)
-n_jobs_group.add_argument("static_n_jobs", nargs="?", default="-1", help=n_jobs_help)
-n_jobs_group.add_argument("--n-jobs", default="-1", help=n_jobs_help)
-
-parser.add_argument(
-    "--params",
-    default=None,
-    help="Path to the parameters file or JSON string. If given, it will override all other arguments.",
-)
+PARAMS_FILE = Path("../params.json")
 
 def run() -> None:
     """Entrypoint for the postprocessing capsule."""
-    args = parser.parse_args()
+    if not PARAMS_FILE.is_file():
+        raise ValueError(f"Params file not found: {PARAMS_FILE}")
+    with open(PARAMS_FILE, "r") as f:
+        full_params = json.load(f)
+    postprocessing_params = full_params["postprocessing"]
+    LOGGING = full_params.get("logging", None)
 
-    N_JOBS = args.static_n_jobs or args.n_jobs
-    N_JOBS = int(N_JOBS) if not N_JOBS.startswith("0.") else float(N_JOBS)
-    MAX_SPIKES_PER_UNIT = args.static_max_spikes_per_unit or args.max_spikes_per_unit
-    ADDITIONAL_EXTENSIONS = args.static_additional_extensions or args.additional_extensions
-    if isinstance(ADDITIONAL_EXTENSIONS, str) and ADDITIONAL_EXTENSIONS == "all":
-        ADDITIONAL_EXTENSIONS = None 
-    PARAMS = args.params
-
-    if PARAMS is not None:
-        try:
-            # try to parse the JSON string first to avoid file name too long error
-            postprocessing_params = json.loads(PARAMS)
-        except json.JSONDecodeError:
-            if Path(PARAMS).is_file():
-                with open(PARAMS, "r") as f:
-                    postprocessing_params = json.load(f)
-            else:
-                raise ValueError(f"Invalid parameters: {PARAMS} is not a valid JSON string or file path")
-        USE_MOTION_CORRECTED = postprocessing_params.pop("use_motion_corrected", False)
-    else:
-        # Here is where the params.json files is loaded and parsed
-        with open("params.json", "r") as f:
-            postprocessing_params = json.load(f)
-        USE_MOTION_CORRECTED = args.use_motion_corrected or args.static_use_motion_corrected == "true"
-
-        # Set the parsed value of max_spikes_per_unit in postprocessing_params
-        if MAX_SPIKES_PER_UNIT is not None:
-            postprocessing_params.setdefault("extensions", {}).setdefault("random_spikes", {})[
-                "max_spikes_per_unit"
-            ] = int(MAX_SPIKES_PER_UNIT)
-
-    # TODO: temporary - remove from params.json when logging is distributed by pipeline
-    LOGGING = postprocessing_params.get("logging", None)
+    USE_MOTION_CORRECTED = postprocessing_params.pop("use_motion_corrected", False)
+    N_JOBS = postprocessing_params.pop("n_jobs", -1)
+    N_JOBS = int(N_JOBS) if not str(N_JOBS).startswith("0.") else float(N_JOBS)
+    MAX_SPIKES_PER_UNIT = postprocessing_params.pop("max_spikes_per_unit", None)
+    ADDITIONAL_EXTENSIONS = postprocessing_params.pop("additional_extensions", None)
+    if ADDITIONAL_EXTENSIONS == "all":
+        ADDITIONAL_EXTENSIONS = None
+    if MAX_SPIKES_PER_UNIT is not None:
+        postprocessing_params.setdefault("extensions", {}).setdefault("random_spikes", {})[
+            "max_spikes_per_unit"
+        ] = int(MAX_SPIKES_PER_UNIT)
 
     # Use CO_CPUS/N_JOBS_EXT env variable if available
     N_JOBS_EXT = os.getenv("CO_CPUS") or os.getenv("N_JOBS_EXT")
@@ -146,15 +88,7 @@ def run() -> None:
             import log_schema
 
             pipeline_name = LOGGING.get("pipeline_name", "AIND Ephys Pipeline")
-            acquisition_name = LOGGING.get("acquisition_name", None)
-
-            if acquisition_name is None:
-                data_description_json = list(data_folder.glob("**/data_description.json"))
-                if len(data_description_json) > 0:
-                    data_description_json = data_description_json[0]
-                    with open(data_description_json, "r") as f:
-                        data_description = json.load(f)
-                    acquisition_name = data_description["name"]
+            acquisition_name = LOGGING.get("acquisition_name", "unknown")
 
             config = LOGGING.get("logging_cfg")
             if config is not None and len(config) == 0:

@@ -27,17 +27,7 @@ The `data/` folder must include the output of the [aind-ephys-preprocessing](htt
 
 ### Parameters
 
-The `code/run` script takes the follwing arguments:
-
-```bash
-  --n-jobs N_JOBS       Number of jobs to use for parallel processing.
-                        Default is -1 (all available cores). It can also be a float between 0 and 1 to use a fraction of available cores
-  --params-file PARAMS_FILE
-                        Optional json file with parameters
-  --params-str PARAMS_STR
-                        Optional json string with parameters
-
-```
+Parameters are read from a `params.json` file that must be in the root folder of the capsule (next to `code/`, i.e. `../params.json` from `code/`), with a `logging` and a `postprocessing` section (keys such as `n_jobs` (default -1), `max_spikes_per_unit`, `additional_extensions`).
 
 A full list of parameters used for postprocessing and quality metrics calculation can be found in the `code/params.json`:
 
