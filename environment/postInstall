@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -e
+
+# install legacy version of spikeinterface with template-metrics protection: https://github.com/alejoe91/spikeinterface/commit/4a633aee71f8c0be6f0525d041d4a37d7df6dabe
+pip install git+https://github.com/alejoe91/spikeinterface.git@4a633aee71f8c0be6f0525d041d4a37d7df6dabe
