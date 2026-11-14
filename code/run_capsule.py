@@ -17,7 +17,7 @@ import shutil
 import sys
 import threading
 import time
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -30,7 +30,6 @@ import spikeinterface.preprocessing as spre
 from aind_data_schema.components.identifiers import Code
 from spikeinterface.core.sortinganalyzer import get_extension_class
 
-import lean_amplitudes
 import lean_metrics
 
 # AIND
@@ -291,13 +290,7 @@ if __name__ == "__main__":
     si.set_global_job_kwargs(**job_kwargs)
 
     # Fail now, not hours in, if SpikeInterface changed what the low-memory
-    # spike_amplitudes, correlograms and quality metrics rely on
-    # (lean_amplitudes.py, lean_metrics.py)
-    if "spike_amplitudes" in postprocessing_params.get("extensions", {}) and (
-        ADDITIONAL_EXTENSIONS is None
-        or "spike_amplitudes" in ADDITIONAL_EXTENSIONS.split(",")
-    ):
-        lean_amplitudes.check_sources()
+    # correlograms and quality metrics rely on (lean_metrics.py)
     lean_metrics.check_sources()
 
     sparsity_params = postprocessing_params.pop("sparsity")
@@ -621,17 +614,7 @@ if __name__ == "__main__":
                     lean_metrics.memmap_sorting_spikes(
                         sorting_analyzer, sorted_folder / "spikes.npy"
                     )
-                # spike_amplitudes reads the spikes per chunk from spikes.npy
-                # (memmap) instead of SpikeInterface's in-memory copy of every
-                # spike, ~64 B per spike (lean_amplitudes.py); same amplitudes
-                amplitudes_from_memmap = (
-                    lean_amplitudes.memmap_spike_amplitudes(
-                        sorting_analyzer, sorted_folder / "spikes.npy"
-                    )
-                    if "spike_amplitudes" in batch
-                    else nullcontext()
-                )
-                with logged_step(f"Computing {', '.join(batch)}"), amplitudes_from_memmap:
+                with logged_step(f"Computing {', '.join(batch)}"):
                     sorting_analyzer.compute(
                         {name: extension_dict[name] for name in batch}
                     )

@@ -8,8 +8,8 @@
    cannot read a ZarrSpikeVector, so it fails and its columns are NaN.
    memmap_sorting_spikes() points the analyzer's sorting at the sorting's
    spikes.npy, opened as a read-only memmap, after checking it holds the same
-   spikes (lean_amplitudes.same_spikes). The same values, read from the page cache
-   instead of copied.
+   spikes (same_spikes). The same values, read from the page cache instead of
+   copied.
 
 2. Amplitudes. Amplitude metrics read spike_amplitudes per unit, which on a lazy
    analyzer is zarr orthogonal indexing: a unit's spikes span the whole recording,
@@ -18,11 +18,14 @@
    once for the quality metrics and puts the zarr array back afterwards.
 
 The SpikeInterface functions these rely on are fingerprinted; check_sources()
-raises if they change.
+raises if they change. Checked against SpikeInterface 0.105.0 and 0.105.2.
+(spike_amplitudes needs nothing here: in 0.105.2 SpikeInterface's SpikeRetriever
+reads the lazy spike vector per chunk itself.)
 """
 
 import hashlib
 import inspect
+import json
 import logging
 from contextlib import contextmanager
 from pathlib import Path
@@ -30,14 +33,18 @@ from pathlib import Path
 import numpy as np
 from spikeinterface.core import analyzer_extension_core, basesorting, core_tools
 
-import lean_amplitudes
-
-# sha256 of inspect.getsource() in spikeinterface 0.105.0
+# sha256 of inspect.getsource(): the accepted versions of each function. Where
+# 0.105.2 differs from 0.105.0, the difference was read and does not change what
+# this module relies on.
 EXPECTED_SOURCES = {
     "BaseSorting.to_spike_vector": (basesorting.BaseSorting.to_spike_vector, "f60f71f55f95b9cb9d1835029ddc91b04a90166157b46ec92dabcf37c5f2e5e7"),
     "BaseSorting._get_spike_vector_segment_slices": (
         basesorting.BaseSorting._get_spike_vector_segment_slices,
-        "f82c0ac53678d9c8390a856d5c6a02b659759bd279a2e725da17a94fd76ca95b",
+        (
+            "f82c0ac53678d9c8390a856d5c6a02b659759bd279a2e725da17a94fd76ca95b",  # 0.105.0
+            # 0.105.2: one segment -> [[0, n]] without a search; the same slices
+            "7b08798954eb007ac35d9f1a133249b493967a585fb8d688821105b62ff1bee1",
+        ),
     ),
     "BaseSorting.to_reordered_spike_vector": (
         basesorting.BaseSorting.to_reordered_spike_vector,
@@ -60,18 +67,59 @@ EXPECTED_SOURCES = {
 
 COARSE_STEP = 65_536
 
+# Rows compared between spikes.npy and the analyzer's sorting, per block
+CHECK_BLOCK_ROWS = 1_000_000
+CHECK_BLOCKS = 16
+
 
 def check_sources() -> None:
+    def accepted(expected):
+        return {expected} if isinstance(expected, str) else set(expected)
+
     changed = [
         name
         for name, (func, expected) in EXPECTED_SOURCES.items()
-        if hashlib.sha256(inspect.getsource(func).encode()).hexdigest() != expected
+        if hashlib.sha256(inspect.getsource(func).encode()).hexdigest() not in accepted(expected)
     ]
     if changed:
         raise RuntimeError(
             f"SpikeInterface changed {changed}, which lean_metrics.py relies on. "
             "Check it against the new code and update EXPECTED_SOURCES."
         )
+
+
+def same_spikes(sorting_analyzer, spikes_npy: Path) -> bool:
+    """Whether spikes.npy holds the analyzer's spikes, in the same order.
+
+    Compares the number of spikes, the unit IDs and CHECK_BLOCKS blocks of rows
+    (first, last and evenly spaced) without loading either spike vector.
+    """
+    spikes_npy = Path(spikes_npy)
+    spikes = np.load(spikes_npy, mmap_mode="r")
+    if spikes.dtype.names is None or not {"sample_index", "unit_index", "segment_index"} <= set(spikes.dtype.names):
+        logging.warning(f"\t{spikes_npy} is not a spike vector")
+        return False
+    info_file = spikes_npy.parent / "numpysorting_info.json"
+    if info_file.is_file():
+        unit_ids = np.array(json.loads(info_file.read_text())["unit_ids"])
+        if not np.array_equal(unit_ids, np.asarray(sorting_analyzer.unit_ids)):
+            logging.warning("\tspikes.npy's unit IDs differ from the analyzer's")
+            return False
+    ref = sorting_analyzer.sorting.to_spike_vector()  # lazy (zarr) for a lazy analyzer
+    n = spikes.shape[0]
+    if ref.size != n:
+        logging.warning(f"\tspikes.npy has {n:,} spikes, the analyzer {ref.size:,}")
+        return False
+    length = min(CHECK_BLOCK_ROWS, n)
+    starts = np.unique(np.linspace(0, n - length, CHECK_BLOCKS).astype(np.int64))
+    for s in starts:
+        a = np.array(spikes[s : s + length])
+        b = ref[s : s + length]
+        for field in ("sample_index", "unit_index", "segment_index"):
+            if not np.array_equal(a[field], np.asarray(b[field])):
+                logging.warning(f"\tspikes.npy differs from the analyzer's spikes ({field}, rows from {s:,})")
+                return False
+    return True
 
 
 def _segment_slices(spikes: np.ndarray, num_segments: int) -> np.ndarray:
@@ -106,7 +154,7 @@ def memmap_sorting_spikes(sorting_analyzer, spikes_npy: Path | None) -> bool:
     if spikes_npy is None or not Path(spikes_npy).is_file():
         logging.warning("\tNo spikes.npy: the analyzer's spike vector stays lazy (zarr)")
         return False
-    if not lean_amplitudes.same_spikes(sorting_analyzer, spikes_npy):
+    if not same_spikes(sorting_analyzer, spikes_npy):
         logging.warning("\tspikes.npy differs: the analyzer's spike vector stays lazy (zarr)")
         return False
     check_sources()
