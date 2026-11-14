@@ -31,6 +31,7 @@ from aind_data_schema.components.identifiers import Code
 from spikeinterface.core.sortinganalyzer import get_extension_class
 
 import lean_amplitudes
+import lean_metrics
 
 # AIND
 from aind_data_schema.core.processing import DataProcess, ProcessStage
@@ -53,6 +54,10 @@ results_folder = Path("../results/")
 
 # Minutes between progress lines while a step runs
 HEARTBEAT_MIN = 10
+
+# Extensions that read every spike from the analyzer's sorting: from the first of
+# them, the sorting reads spikes.npy as a memmap (lean_metrics.py)
+SPIKE_VECTOR_EXTENSIONS = {"correlograms", "isi_histograms"}
 
 
 def _rss_gb() -> float | None:
@@ -286,12 +291,14 @@ if __name__ == "__main__":
     si.set_global_job_kwargs(**job_kwargs)
 
     # Fail now, not hours in, if SpikeInterface changed what the low-memory
-    # spike_amplitudes relies on (lean_amplitudes.py)
+    # spike_amplitudes, correlograms and quality metrics rely on
+    # (lean_amplitudes.py, lean_metrics.py)
     if "spike_amplitudes" in postprocessing_params.get("extensions", {}) and (
         ADDITIONAL_EXTENSIONS is None
         or "spike_amplitudes" in ADDITIONAL_EXTENSIONS.split(",")
     ):
         lean_amplitudes.check_sources()
+    lean_metrics.check_sources()
 
     sparsity_params = postprocessing_params.pop("sparsity")
 
@@ -583,6 +590,11 @@ if __name__ == "__main__":
                 if ext_name not in additional_extensions:
                     extension_dict.pop(ext_name)
 
+        # From the first extension that reads every spike (and for the quality
+        # metrics), the analyzer's spike vector is spikes.npy as a memmap instead
+        # of its zarr copy, which each reader decompresses whole (lean_metrics.py)
+        spike_vector_memmap_tried = False
+
         if len(extension_dict) > 0:
             logging.info(
                 f"\tComputing postprocessing extensions: {list(extension_dict.keys())}"
@@ -604,6 +616,11 @@ if __name__ == "__main__":
                 else:
                     batches.append([name])
             for batch in batches:
+                if not spike_vector_memmap_tried and SPIKE_VECTOR_EXTENSIONS & set(batch):
+                    spike_vector_memmap_tried = True
+                    lean_metrics.memmap_sorting_spikes(
+                        sorting_analyzer, sorted_folder / "spikes.npy"
+                    )
                 # spike_amplitudes reads the spikes per chunk from spikes.npy
                 # (memmap) instead of SpikeInterface's in-memory copy of every
                 # spike, ~64 B per spike (lean_amplitudes.py); same amplitudes
@@ -620,7 +637,16 @@ if __name__ == "__main__":
                     )
 
         if quality_metrics_ext_params is not None:
-            with logged_step("Computing quality metrics"):
+            if not spike_vector_memmap_tried:
+                spike_vector_memmap_tried = True
+                lean_metrics.memmap_sorting_spikes(
+                    sorting_analyzer, sorted_folder / "spikes.npy"
+                )
+            # Amplitude metrics read spike_amplitudes per unit: from memory, not
+            # one zarr decompression per unit (lean_metrics.py)
+            with logged_step("Computing quality metrics"), lean_metrics.amplitudes_in_memory(
+                sorting_analyzer
+            ):
                 _ = sorting_analyzer.compute(
                     "quality_metrics", **quality_metrics_ext_params
                 )
