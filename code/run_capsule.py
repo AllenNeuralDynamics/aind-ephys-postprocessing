@@ -17,7 +17,7 @@ import shutil
 import sys
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -29,6 +29,8 @@ import spikeinterface.curation as sc
 import spikeinterface.preprocessing as spre
 from aind_data_schema.components.identifiers import Code
 from spikeinterface.core.sortinganalyzer import get_extension_class
+
+import lean_amplitudes
 
 # AIND
 from aind_data_schema.core.processing import DataProcess, ProcessStage
@@ -282,6 +284,14 @@ if __name__ == "__main__":
     job_kwargs = postprocessing_params.pop("job_kwargs")
     job_kwargs["n_jobs"] = N_JOBS
     si.set_global_job_kwargs(**job_kwargs)
+
+    # Fail now, not hours in, if SpikeInterface changed what the low-memory
+    # spike_amplitudes relies on (lean_amplitudes.py)
+    if "spike_amplitudes" in postprocessing_params.get("extensions", {}) and (
+        ADDITIONAL_EXTENSIONS is None
+        or "spike_amplitudes" in ADDITIONAL_EXTENSIONS.split(",")
+    ):
+        lean_amplitudes.check_sources()
 
     sparsity_params = postprocessing_params.pop("sparsity")
 
@@ -594,7 +604,17 @@ if __name__ == "__main__":
                 else:
                     batches.append([name])
             for batch in batches:
-                with logged_step(f"Computing {', '.join(batch)}"):
+                # spike_amplitudes reads the spikes per chunk from spikes.npy
+                # (memmap) instead of SpikeInterface's in-memory copy of every
+                # spike, ~64 B per spike (lean_amplitudes.py); same amplitudes
+                amplitudes_from_memmap = (
+                    lean_amplitudes.memmap_spike_amplitudes(
+                        sorting_analyzer, sorted_folder / "spikes.npy"
+                    )
+                    if "spike_amplitudes" in batch
+                    else nullcontext()
+                )
+                with logged_step(f"Computing {', '.join(batch)}"), amplitudes_from_memmap:
                     sorting_analyzer.compute(
                         {name: extension_dict[name] for name in batch}
                     )
