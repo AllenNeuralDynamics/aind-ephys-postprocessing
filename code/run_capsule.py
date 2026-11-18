@@ -46,6 +46,7 @@ def run() -> None:
     with open(PARAMS_FILE, "r") as f:
         full_params = json.load(f)
     postprocessing_params = full_params["postprocessing"]
+    motion_correction_params = full_params["preprocessing"]["motion_correction"]
     LOGGING = full_params.get("logging", None)
 
     USE_MOTION_CORRECTED = postprocessing_params.pop("use_motion_corrected", False)
@@ -155,7 +156,7 @@ def run() -> None:
         postprocessing_notes = ""
         binary_json_file = preprocessed_folder / f"binary_{recording_name}.json"
         preprocessed_stem = f"preprocessed_{recording_name}"
-        motion_corrected_folder = preprocessed_folder / f"motion_{recording_name}"
+        motion_folder = preprocessed_folder / f"motion_{recording_name}"
 
         logging.info(f"\tProcessing {recording_name}")
         postprocessing_output_process_json = results_folder / f"{data_process_prefix}_{recording_name}.json"
@@ -188,42 +189,32 @@ def run() -> None:
             np.save(postprocessing_output_folder / "placeholder.npy", mock_array)
             continue
 
-        if USE_MOTION_CORRECTED and motion_corrected_folder is not None:
-            from spikeinterface.sortingcomponents.motion import (
-                InterpolateMotionRecording,
-                interpolate_motion,
-            )
-
-            logging.info("\tCorrecting for motion prior to postprocessing")
-            if not isinstance(recording, InterpolateMotionRecording):
-                logging.info("\t\tApplying motion interpolation")
-                motion_info = spre.load_motion_info(motion_corrected_folder)
-                interpolate_motion_kwargs = motion_info["parameters"]["interpolate_motion_kwargs"]
-                recording_bin_f = spre.astype(recording_bin, "float32")
-
-                recording_bin = interpolate_motion(
-                    recording_bin_f, motion=motion_info["motion"], **interpolate_motion_kwargs
-                )
-                # InterpolateMotion is not compatible with times.
-                # Removing time info for postprocessing
-                for rec_segment in recording_bin._recording_segments:
-                    if rec_segment.time_vector is not None:
-                        rec_segment.time_vector = None
-
-                if recording_lazy is not None:
-                    recording_lazy_f = spre.astype(recording_bin, "float32")
-                    recording_lazy = interpolate_motion(
-                        recording_lazy_f, motion=motion_info["motion"], **interpolate_motion_kwargs
-                    )
-                    # InterpolateMotion is not compatible with times.
-                    # Removing time info for postprocessing
-                    for rec_segment in recording_lazy._recording_segments:
-                        if rec_segment.time_vector is not None:
-                            rec_segment.time_vector = None
-            else:
+        has_motion = motion_folder.is_dir()
+        if USE_MOTION_CORRECTED:
+            if not has_motion:
+                logging.info("\tMotion not computed or failed: skipping motion correction")
+            elif motion_correction_params["apply"]:
                 logging.info("\tRecording is already interpolated")
+            elif recording_bin.get_num_segments() > 1:
+                logging.warning("\tMotion was estimated on concatenated segments: skipping motion correction")
+            else:
+                from spikeinterface.sortingcomponents.motion import interpolate_motion
 
-        # make sure we have spikesorted output for the block-stream
+                logging.info("\tCorrecting for motion prior to postprocessing")
+                motion = spre.load_motion_info(motion_folder)["motion"]
+                interpolate_motion_kwargs = motion_correction_params.get("interpolate_motion_kwargs", {})
+                recording_bin = interpolate_motion(
+                    spre.astype(recording_bin, "float32"),
+                    motion=motion,
+                    **interpolate_motion_kwargs
+                )
+                if recording_lazy is not None:
+                    recording_lazy = interpolate_motion(
+                        spre.astype(recording_lazy, "float32"),
+                        motion=motion,
+                        **interpolate_motion_kwargs
+                    )
+
         sorted_folder = spikesorted_folder / f"spikesorted_{recording_name}"
         if not sorted_folder.is_dir():
             raise FileNotFoundError(f"Spike sorted data for {recording_name} not found!")
