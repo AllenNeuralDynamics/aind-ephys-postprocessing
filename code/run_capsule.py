@@ -73,15 +73,26 @@ def _supports_spike_batches() -> bool:
     return hasattr(BaseMetric, "supports_spike_batches")
 
 
-def _rss_gb() -> float | None:
-    """Resident memory of this process in GB (Linux), or None."""
+def _status_gb(field: str) -> float | None:
+    """A memory field of /proc/self/status (kB) in GB (Linux), or None."""
     try:
         for line in Path("/proc/self/status").read_text().splitlines():
-            if line.startswith("VmRSS:"):
+            if line.startswith(f"{field}:"):
                 return int(line.split()[1]) / 1e6
     except OSError:
         pass
     return None
+
+
+def _rss_gb() -> float | None:
+    """Resident memory of this process in GB (Linux), or None."""
+    return _status_gb("VmRSS")
+
+
+def _rss_anon_gb() -> float | None:
+    """Anonymous resident memory in GB (Linux), or None: RSS without file-backed
+    pages, such as the memmapped spikes.npy, which the page cache can reclaim."""
+    return _status_gb("RssAnon")
 
 
 def _ram() -> str:
@@ -129,21 +140,30 @@ def logged_step(name: str):
 
 
 class PeakRSS:
-    """Peak resident memory (GB) while active, sampled every interval_s (Linux)."""
+    """Peak resident memory (GB) while active, sampled every interval_s (Linux):
+    total RSS (peak) and anonymous RSS (peak_anon, without file-backed pages such
+    as the memmapped spikes.npy, so the memory the process actually needs)."""
 
     def __init__(self, interval_s: float = 0.5):
         self.interval_s = interval_s
         self.start = self.end = self.peak = None
+        self.start_anon = self.end_anon = self.peak_anon = None
         self._stop = threading.Event()
+
+    def _update(self):
+        rss, anon = _rss_gb(), _rss_anon_gb()
+        if rss is not None and (self.peak is None or rss > self.peak):
+            self.peak = rss
+        if anon is not None and (self.peak_anon is None or anon > self.peak_anon):
+            self.peak_anon = anon
+        return rss, anon
 
     def _sample(self):
         while not self._stop.wait(self.interval_s):
-            rss = _rss_gb()
-            if rss is not None and (self.peak is None or rss > self.peak):
-                self.peak = rss
+            self._update()
 
     def __enter__(self):
-        self.start = self.peak = _rss_gb()
+        self.start, self.start_anon = self._update()
         self._thread = threading.Thread(target=self._sample, daemon=True)
         self._thread.start()
         return self
@@ -151,10 +171,14 @@ class PeakRSS:
     def __exit__(self, *exc):
         self._stop.set()
         self._thread.join()
-        self.end = _rss_gb()
-        if self.end is not None and (self.peak is None or self.end > self.peak):
-            self.peak = self.end
+        self.end, self.end_anon = self._update()
         return False
+
+    def describe(self) -> str:
+        if self.peak is None:
+            return "peak RAM n/a"
+        anon = f" (anonymous {self.peak_anon:.1f} GB)" if self.peak_anon is not None else ""
+        return f"peak RAM {self.peak:.1f} GB{anon}"
 
 
 @contextmanager
@@ -165,12 +189,44 @@ def profiled_metrics(profile: list):
     (no metric class overrides it); the original is restored on exit.
     """
     from spikeinterface.core.analyzer_extension_core import BaseMetric
+    from spikeinterface.metrics.quality import misc_metrics
 
     original = BaseMetric.__dict__["compute"]
+    current = {"entry": None}
+
+    # Sub-steps of firing_range / presence_ratio: bin edges (both versions) and,
+    # with PR #4948, the batched binning (_histogram_spikes_per_unit)
+    def timed(step_name, func):
+        def wrapper(*args, **kwargs):
+            rss = PeakRSS()
+            t_start = time.perf_counter()
+            with rss:
+                result = func(*args, **kwargs)
+            runtime_s = time.perf_counter() - t_start
+            step = dict(
+                step=step_name,
+                runtime_s=round(runtime_s, 2),
+                rss_peak_gb=rss.peak,
+                rss_anon_start_gb=rss.start_anon,
+                rss_anon_peak_gb=rss.peak_anon,
+            )
+            if current["entry"] is not None:
+                current["entry"].setdefault("steps", []).append(step)
+            logging.info(f"\t    {step_name}: {runtime_s / 60:.1f} min  {rss.describe()}")
+            return result
+
+        return wrapper
+
+    sub_steps = {
+        name: getattr(misc_metrics, name)
+        for name in ("compute_bin_edges_per_unit", "_histogram_spikes_per_unit")
+        if hasattr(misc_metrics, name)
+    }
 
     def compute(cls, *args, **kwargs):
         entry = dict(metric=cls.metric_name, error=None)
         profile.append(entry)
+        current["entry"] = entry
         rss = PeakRSS()
         t_start = time.perf_counter()
         try:
@@ -187,16 +243,24 @@ def profiled_metrics(profile: list):
                 rss_start_gb=rss.start,
                 rss_peak_gb=rss.peak,
                 rss_end_gb=rss.end,
+                rss_anon_start_gb=rss.start_anon,
+                rss_anon_peak_gb=rss.peak_anon,
+                rss_anon_end_gb=rss.end_anon,
             )
-            peak = f"peak RAM {rss.peak:.1f} GB" if rss.peak is not None else ""
             failed = "  FAILED" if entry["error"] else ""
-            logging.info(f"\t  {cls.metric_name}: {runtime_s / 60:.1f} min  {peak}{failed}")
+            logging.info(
+                f"\t  {cls.metric_name}: {runtime_s / 60:.1f} min  {rss.describe()}{failed}"
+            )
 
     BaseMetric.compute = classmethod(compute)
+    for name, func in sub_steps.items():
+        setattr(misc_metrics, name, timed(name, func))
     try:
         yield
     finally:
         BaseMetric.compute = original
+        for name, func in sub_steps.items():
+            setattr(misc_metrics, name, func)
 
 
 def write_metrics_profile(
@@ -217,6 +281,15 @@ def write_metrics_profile(
             max_spikes_per_batch = quality_metrics_params.get("max_spikes_per_batch", 1_000_000)
         else:
             max_spikes_per_batch = None
+        num_spikes = int(sorting_analyzer.sorting.to_spike_vector().size)
+        duration_h = round(float(sorting_analyzer.get_total_duration()) / 3600, 3)
+        firing_range_bin_s = None
+        if "firing_range" in quality_metrics_params.get("metric_names", []):
+            firing_range_bin_s = (
+                quality_metrics_params.get("metric_params", {})
+                .get("firing_range", {})
+                .get("bin_size_s", 5)
+            )
         summary = dict(
             recording_name=recording_name,
             spikeinterface=si.__version__,
@@ -227,21 +300,29 @@ def write_metrics_profile(
             amplitudes_in_memory=not spike_batches,
             spike_vector_memmapped=bool(spike_vector_memmapped),
             num_units=int(len(sorting_analyzer.unit_ids)),
-            num_spikes=int(sorting_analyzer.sorting.to_spike_vector().size),
-            duration_h=round(float(sorting_analyzer.get_total_duration()) / 3600, 3),
+            num_spikes=num_spikes,
+            num_spike_batches=(
+                -(-num_spikes // int(max_spikes_per_batch)) if max_spikes_per_batch else None
+            ),
+            duration_h=duration_h,
+            firing_range_bins=(
+                int(duration_h * 3600 // firing_range_bin_s) if firing_range_bin_s else None
+            ),
             runtime_s=round(runtime_s, 2),
             rss_start_gb=rss.start,
             rss_peak_gb=rss.peak,
             rss_end_gb=rss.end,
+            rss_anon_start_gb=rss.start_anon,
+            rss_anon_peak_gb=rss.peak_anon,
+            rss_anon_end_gb=rss.end_anon,
             metrics=profile,
         )
         profile_path = results_folder / f"quality_metrics_profile_{recording_name}.json"
         profile_path.write_text(json.dumps(summary, indent=2, default=str))
         metrics = sorting_analyzer.get_extension("quality_metrics").get_data()
         metrics.to_csv(results_folder / f"quality_metrics_{recording_name}.csv")
-        peak = f"{rss.peak:.1f} GB" if rss.peak is not None else "n/a"
         logging.info(
-            f"\tQuality metrics: {runtime_s / 60:.1f} min, peak RAM {peak} "
+            f"\tQuality metrics: {runtime_s / 60:.1f} min, {rss.describe()} "
             f"-> {profile_path.name}"
         )
     except Exception as e:
