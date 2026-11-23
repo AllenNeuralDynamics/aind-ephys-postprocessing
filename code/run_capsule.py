@@ -17,13 +17,14 @@ import shutil
 import sys
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
 
 # SPIKEINTERFACE
+import probeinterface
 import spikeinterface as si
 import spikeinterface.curation as sc
 import spikeinterface.preprocessing as spre
@@ -57,6 +58,19 @@ HEARTBEAT_MIN = 10
 # Extensions that read every spike from the analyzer's sorting: from the first of
 # them, the sorting reads spikes.npy as a memmap (lean_metrics.py)
 SPIKE_VECTOR_EXTENSIONS = {"correlograms", "isi_histograms"}
+
+# Test branch feat-spike-batching: SpikeInterface PR #4948 ("compute metrics with
+# max_spikes_per_batch", installed in postInstall from alejoe91/spikeinterface,
+# branch chronic-qc). Without it (postInstall line removed), the same code runs
+# as the 0.105.2 baseline, so both runs write the same profile for comparison.
+SPIKE_BATCHES_PR = "https://github.com/SpikeInterface/spikeinterface/pull/4948"
+
+
+def _supports_spike_batches() -> bool:
+    """Whether SpikeInterface has PR #4948 (quality metrics in spike batches)."""
+    from spikeinterface.core.analyzer_extension_core import BaseMetric
+
+    return hasattr(BaseMetric, "supports_spike_batches")
 
 
 def _rss_gb() -> float | None:
@@ -112,6 +126,126 @@ def logged_step(name: str):
     logging.info(
         f"\t{name} done ({(time.perf_counter() - t_start) / 60:.1f} min)  {_ram()}"
     )
+
+
+class PeakRSS:
+    """Peak resident memory (GB) while active, sampled every interval_s (Linux)."""
+
+    def __init__(self, interval_s: float = 0.5):
+        self.interval_s = interval_s
+        self.start = self.end = self.peak = None
+        self._stop = threading.Event()
+
+    def _sample(self):
+        while not self._stop.wait(self.interval_s):
+            rss = _rss_gb()
+            if rss is not None and (self.peak is None or rss > self.peak):
+                self.peak = rss
+
+    def __enter__(self):
+        self.start = self.peak = _rss_gb()
+        self._thread = threading.Thread(target=self._sample, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._stop.set()
+        self._thread.join()
+        self.end = _rss_gb()
+        if self.end is not None and (self.peak is None or self.end > self.peak):
+            self.peak = self.end
+        return False
+
+
+@contextmanager
+def profiled_metrics(profile: list):
+    """Log the runtime and peak RAM of each quality metric while active.
+
+    Wraps BaseMetric.compute, which ComputeQualityMetrics calls once per metric
+    (no metric class overrides it); the original is restored on exit.
+    """
+    from spikeinterface.core.analyzer_extension_core import BaseMetric
+
+    original = BaseMetric.__dict__["compute"]
+
+    def compute(cls, *args, **kwargs):
+        entry = dict(metric=cls.metric_name, error=None)
+        profile.append(entry)
+        rss = PeakRSS()
+        t_start = time.perf_counter()
+        try:
+            with rss:
+                return original.__func__(cls, *args, **kwargs)
+        except Exception as e:
+            # ComputeQualityMetrics catches it and fills the metric with NaN
+            entry["error"] = f"{type(e).__name__}: {e}"
+            raise
+        finally:
+            runtime_s = time.perf_counter() - t_start
+            entry.update(
+                runtime_s=round(runtime_s, 2),
+                rss_start_gb=rss.start,
+                rss_peak_gb=rss.peak,
+                rss_end_gb=rss.end,
+            )
+            peak = f"peak RAM {rss.peak:.1f} GB" if rss.peak is not None else ""
+            failed = "  FAILED" if entry["error"] else ""
+            logging.info(f"\t  {cls.metric_name}: {runtime_s / 60:.1f} min  {peak}{failed}")
+
+    BaseMetric.compute = classmethod(compute)
+    try:
+        yield
+    finally:
+        BaseMetric.compute = original
+
+
+def write_metrics_profile(
+    sorting_analyzer,
+    recording_name: str,
+    quality_metrics_params: dict,
+    profile: list,
+    rss: PeakRSS,
+    runtime_s: float,
+    spike_batches: bool,
+    spike_vector_memmapped: bool,
+) -> None:
+    """Write quality_metrics_profile_<recording>.json (runtime and peak RAM per
+    metric) and quality_metrics_<recording>.csv, to compare runs with and without
+    PR #4948. Never fails the run."""
+    try:
+        if spike_batches:
+            max_spikes_per_batch = quality_metrics_params.get("max_spikes_per_batch", 1_000_000)
+        else:
+            max_spikes_per_batch = None
+        summary = dict(
+            recording_name=recording_name,
+            spikeinterface=si.__version__,
+            probeinterface=probeinterface.__version__,
+            spike_batches=spike_batches,
+            spike_batches_pr=SPIKE_BATCHES_PR if spike_batches else None,
+            max_spikes_per_batch=max_spikes_per_batch,
+            amplitudes_in_memory=not spike_batches,
+            spike_vector_memmapped=bool(spike_vector_memmapped),
+            num_units=int(len(sorting_analyzer.unit_ids)),
+            num_spikes=int(sorting_analyzer.sorting.to_spike_vector().size),
+            duration_h=round(float(sorting_analyzer.get_total_duration()) / 3600, 3),
+            runtime_s=round(runtime_s, 2),
+            rss_start_gb=rss.start,
+            rss_peak_gb=rss.peak,
+            rss_end_gb=rss.end,
+            metrics=profile,
+        )
+        profile_path = results_folder / f"quality_metrics_profile_{recording_name}.json"
+        profile_path.write_text(json.dumps(summary, indent=2, default=str))
+        metrics = sorting_analyzer.get_extension("quality_metrics").get_data()
+        metrics.to_csv(results_folder / f"quality_metrics_{recording_name}.csv")
+        peak = f"{rss.peak:.1f} GB" if rss.peak is not None else "n/a"
+        logging.info(
+            f"\tQuality metrics: {runtime_s / 60:.1f} min, peak RAM {peak} "
+            f"-> {profile_path.name}"
+        )
+    except Exception as e:
+        logging.warning(f"\tCould not write the quality metrics profile: {type(e).__name__}: {e}")
 
 # Define argument parser
 parser = argparse.ArgumentParser(description="Postprocess ecephys data")
@@ -292,6 +426,18 @@ if __name__ == "__main__":
     # Fail now, not hours in, if SpikeInterface changed what the low-memory
     # correlograms and quality metrics rely on (lean_metrics.py)
     lean_metrics.check_sources()
+
+    # Which SpikeInterface this run tests: PR #4948 (postInstall) or the baseline
+    SPIKE_BATCHES = _supports_spike_batches()
+    logging.info(
+        f"\tspikeinterface {si.__version__}, probeinterface {probeinterface.__version__}; "
+        f"quality metrics in spike batches ({SPIKE_BATCHES_PR}): {SPIKE_BATCHES}"
+    )
+    if not SPIKE_BATCHES:
+        logging.warning(
+            "\tThis SpikeInterface does not have PR #4948 (check the postInstall "
+            "install): this run is the baseline, with amplitudes_in_memory"
+        )
 
     sparsity_params = postprocessing_params.pop("sparsity")
 
@@ -587,6 +733,7 @@ if __name__ == "__main__":
         # metrics), the analyzer's spike vector is spikes.npy as a memmap instead
         # of its zarr copy, which each reader decompresses whole (lean_metrics.py)
         spike_vector_memmap_tried = False
+        spike_vector_memmapped = False
 
         if len(extension_dict) > 0:
             logging.info(
@@ -611,7 +758,7 @@ if __name__ == "__main__":
             for batch in batches:
                 if not spike_vector_memmap_tried and SPIKE_VECTOR_EXTENSIONS & set(batch):
                     spike_vector_memmap_tried = True
-                    lean_metrics.memmap_sorting_spikes(
+                    spike_vector_memmapped = lean_metrics.memmap_sorting_spikes(
                         sorting_analyzer, sorted_folder / "spikes.npy"
                     )
                 with logged_step(f"Computing {', '.join(batch)}"):
@@ -622,17 +769,43 @@ if __name__ == "__main__":
         if quality_metrics_ext_params is not None:
             if not spike_vector_memmap_tried:
                 spike_vector_memmap_tried = True
-                lean_metrics.memmap_sorting_spikes(
+                spike_vector_memmapped = lean_metrics.memmap_sorting_spikes(
                     sorting_analyzer, sorted_folder / "spikes.npy"
                 )
-            # Amplitude metrics read spike_amplitudes per unit: from memory, not
-            # one zarr decompression per unit (lean_metrics.py)
-            with logged_step("Computing quality metrics"), lean_metrics.amplitudes_in_memory(
-                sorting_analyzer
-            ):
+            if not SPIKE_BATCHES and "max_spikes_per_batch" in quality_metrics_ext_params:
+                # only PR #4948's quality_metrics accepts it
+                quality_metrics_ext_params = {
+                    k: v
+                    for k, v in quality_metrics_ext_params.items()
+                    if k != "max_spikes_per_batch"
+                }
+            if SPIKE_BATCHES:
+                # PR #4948: amplitude metrics read spike_amplitudes in contiguous
+                # spike batches themselves, so the array is not loaded whole
+                amplitudes_context = nullcontext()
+            else:
+                # Amplitude metrics read spike_amplitudes per unit: from memory, not
+                # one zarr decompression per unit (lean_metrics.py)
+                amplitudes_context = lean_metrics.amplitudes_in_memory(sorting_analyzer)
+            metrics_profile = []
+            with logged_step("Computing quality metrics"), amplitudes_context, profiled_metrics(
+                metrics_profile
+            ), PeakRSS() as metrics_rss:
+                t_metrics = time.perf_counter()
                 _ = sorting_analyzer.compute(
                     "quality_metrics", **quality_metrics_ext_params
                 )
+                metrics_runtime_s = time.perf_counter() - t_metrics
+            write_metrics_profile(
+                sorting_analyzer,
+                recording_name,
+                quality_metrics_ext_params,
+                metrics_profile,
+                metrics_rss,
+                metrics_runtime_s,
+                spike_batches=SPIKE_BATCHES,
+                spike_vector_memmapped=spike_vector_memmapped,
+            )
 
         t_postprocessing_end = time.perf_counter()
         elapsed_time_postprocessing = np.round(

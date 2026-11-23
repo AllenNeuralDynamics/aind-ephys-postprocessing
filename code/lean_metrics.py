@@ -18,7 +18,10 @@
    once for the quality metrics and puts the zarr array back afterwards.
 
 The SpikeInterface functions these rely on are fingerprinted; check_sources()
-raises if they change. Checked against SpikeInterface 0.105.0 and 0.105.2.
+raises if they change. Checked against SpikeInterface 0.105.0 and 0.105.2, and
+0.105.5 with PR #4948 (alejoe91/spikeinterface@chronic-qc, unchanged sources).
+With PR #4948, quality metrics read amplitudes in spike batches themselves, so
+the capsule skips amplitudes_in_memory() there.
 (spike_amplitudes needs nothing here: in 0.105.2 SpikeInterface's SpikeRetriever
 reads the lazy spike vector per chunk itself.)
 """

@@ -60,6 +60,7 @@
         },
         "valid_unit_periods": {},
         "quality_metrics": {
+            "max_spikes_per_batch": 1000000,
             "metric_names": [
                 "num_spikes",
                 "firing_rate",
