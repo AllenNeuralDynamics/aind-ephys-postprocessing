@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 set -e
 
-# Test branch feat-spike-batching: SpikeInterface PR #4948 (quality metrics with
-# max_spikes_per_batch) backported onto 0.105.5, from alejoe91/spikeinterface@chronic-qc.
-# Replaces the spikeinterface==0.105.2 installed above (and caps probeinterface < 0.5).
-# Installed from the commit's tarball, so the image doesn't need git.
 pip install --no-cache-dir https://github.com/alejoe91/spikeinterface/archive/2dab71b8ada7fc716e0555362ffe1eedf035b1ea.tar.gz
 python -c "import spikeinterface, probeinterface; from spikeinterface.core.analyzer_extension_core import BaseMetric; assert hasattr(BaseMetric, 'supports_spike_batches'), 'PR #4948 not installed'; print('spikeinterface', spikeinterface.__version__, 'probeinterface', probeinterface.__version__, 'PR #4948 OK')"
